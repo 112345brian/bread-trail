@@ -53,9 +53,11 @@ export class GraphSwitcher extends Modal {
 
     this.render();
 
-    // Center on the current node after DOM renders
+    // Center on the current node after DOM renders and layout completes
     requestAnimationFrame(() => {
-      this.centerSelectedNode();
+      requestAnimationFrame(() => {
+        this.centerSelectedNode();
+      });
     });
   }
 
