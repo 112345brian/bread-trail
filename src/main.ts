@@ -1,15 +1,17 @@
 import { App, Modal, Notice, Plugin, TFile } from 'obsidian';
+import { OutlineModal } from './OutlineModal';
 
-interface BreadcrumbsPlugin {
+export interface BreadcrumbsPlugin {
   graph: {
     get_outgoing_edges(path: string): { to_array(): any[] };
     get_incoming_edges(path: string): { to_array(): any[] };
+    target_path?(edge: any): string;
   };
   settings: {
     edge_fields: string[];
   };
   events: {
-    on(event: 'graph-update', cb: () => void): void;
+    on(event: string, cb: () => void): void;
   };
 }
 
@@ -132,6 +134,24 @@ export default class BreadTrail extends Plugin {
         }
 
         new TrailModal(this.app, file, this.bc).open();
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'show-outline',
+      name: 'Show breadcrumb outline',
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (checking) return !!file && file.extension === 'md';
+        if (!file) return false;
+
+        if (!this.bc) {
+          new BreadcrumbsMissingModal(this.app).open();
+          return true;
+        }
+
+        new OutlineModal(this.app, file, this.bc).open();
         return true;
       },
     });

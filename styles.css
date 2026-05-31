@@ -1,8 +1,42 @@
-/*
+/* ── Outline view ──────────────────────────────────────────── */
+.bread-trail-root-label {
+  font-size: 0.85em;
+  margin-bottom: 8px;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.bread-trail-outline {
+  margin-top: 8px;
+}
 
-If your plugin does not need CSS, delete this file.
+.bread-trail-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
 
-*/
+.bread-trail-node:hover {
+  background: var(--background-modifier-hover);
+}
+
+.bread-trail-node-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bread-trail-node-name {
+  flex: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bread-trail-node-name:hover {
+  color: var(--text-accent);
+}
