@@ -30,6 +30,7 @@ export class GraphSwitcher extends Modal {
   private initialFile: TFile;
   private lastEnterPress = 0;
   private renderTimeout?: ReturnType<typeof setTimeout>;
+  private horizontalOrientation = false;
 
   constructor(
     app: App,
@@ -47,7 +48,7 @@ export class GraphSwitcher extends Modal {
     this.titleEl.setText('Breadcrumb graph switcher');
     this.contentEl.addClass('bread-trail-graph-modal');
     this.contentEl.createEl('p', {
-      text: 'Arrow keys or WASD to navigate. Enter to explore selected note. Enter again to open it.',
+      text: 'Arrow keys or WASD to navigate. Enter to explore selected note. Enter again to open it. Shift+Enter to flip orientation.',
       cls: 'mod-muted bread-trail-graph-help',
     });
 
@@ -195,22 +196,40 @@ export class GraphSwitcher extends Modal {
     const sequenceChildren = nodes.filter((node) => node.relation === 'sequence-child');
     const related = nodes.filter((node) => node.relation === 'related');
 
-    previous.forEach((node) => {
-      node.x = CENTER_X - node.depth * HORIZONTAL_GAP;
-      node.y = CENTER_Y;
-    });
-    next.forEach((node) => {
-      node.x = CENTER_X + node.depth * HORIZONTAL_GAP;
-      node.y = CENTER_Y;
-    });
-    this.layoutHierarchy(parents, -1);
-    this.layoutHierarchy(children, 1);
-    this.layoutSequenceChildren(sequenceChildren, nodes);
-    this.layoutRow(siblings, CENTER_Y + VERTICAL_GAP, CENTER_X);
-    this.layoutRow(related, CENTER_Y + VERTICAL_GAP * 2, CENTER_X);
+    if (this.horizontalOrientation) {
+      // Horizontal: parents left, children right, prev/next vertical
+      parents.forEach((node) => {
+        node.x = CENTER_X - node.depth * HORIZONTAL_GAP;
+        node.y = CENTER_Y;
+      });
+      children.forEach((node) => {
+        node.x = CENTER_X + node.depth * HORIZONTAL_GAP;
+        node.y = CENTER_Y;
+      });
+      this.layoutHierarchy(previous, -1, true);
+      this.layoutHierarchy(next, 1, true);
+      this.layoutSequenceChildren(sequenceChildren, nodes, true);
+      this.layoutRow(siblings, CENTER_Y, CENTER_X + HORIZONTAL_GAP * 2, true);
+      this.layoutRow(related, CENTER_Y, CENTER_X + HORIZONTAL_GAP * 3, true);
+    } else {
+      // Vertical: parents up, children down, prev/next horizontal
+      previous.forEach((node) => {
+        node.x = CENTER_X - node.depth * HORIZONTAL_GAP;
+        node.y = CENTER_Y;
+      });
+      next.forEach((node) => {
+        node.x = CENTER_X + node.depth * HORIZONTAL_GAP;
+        node.y = CENTER_Y;
+      });
+      this.layoutHierarchy(parents, -1, false);
+      this.layoutHierarchy(children, 1, false);
+      this.layoutSequenceChildren(sequenceChildren, nodes, false);
+      this.layoutRow(siblings, CENTER_Y + VERTICAL_GAP, CENTER_X, false);
+      this.layoutRow(related, CENTER_Y + VERTICAL_GAP * 2, CENTER_X, false);
+    }
   }
 
-  private layoutSequenceChildren(nodes: GraphNode[], allNodes: GraphNode[]) {
+  private layoutSequenceChildren(nodes: GraphNode[], allNodes: GraphNode[], horizontal: boolean) {
     const parentsByPath = new Map(allNodes.map((node) => [node.file.path, node]));
     const sourcePaths = new Set(nodes.map((node) => node.sourcePath));
 
@@ -218,19 +237,27 @@ export class GraphSwitcher extends Modal {
       const parent = parentsByPath.get(sourcePath);
       if (!parent) continue;
       const children = nodes.filter((node) => node.sourcePath === sourcePath);
-      this.layoutRow(children, CENTER_Y + VERTICAL_GAP, parent.x);
+      if (horizontal) {
+        this.layoutRow(children, parent.y, CENTER_X + HORIZONTAL_GAP, true);
+      } else {
+        this.layoutRow(children, CENTER_Y + VERTICAL_GAP, parent.x, false);
+      }
     }
   }
 
-  private layoutHierarchy(nodes: GraphNode[], direction: -1 | 1) {
+  private layoutHierarchy(nodes: GraphNode[], direction: -1 | 1, horizontal: boolean) {
     const depths = new Set(nodes.map((node) => node.depth));
     for (const depth of depths) {
       const row = nodes.filter((node) => node.depth === depth);
-      this.layoutRow(row, CENTER_Y + direction * depth * VERTICAL_GAP, CENTER_X);
+      if (horizontal) {
+        this.layoutRow(row, CENTER_Y + direction * depth * VERTICAL_GAP, CENTER_X, true);
+      } else {
+        this.layoutRow(row, CENTER_Y + direction * depth * VERTICAL_GAP, CENTER_X, false);
+      }
     }
   }
 
-  private layoutRow(nodes: GraphNode[], y: number, centerX: number) {
+  private layoutRow(nodes: GraphNode[], y: number, centerX: number, horizontal: boolean) {
     if (nodes.length === 0) return;
 
     // Sort alphabetically for readability when many nodes
@@ -245,10 +272,19 @@ export class GraphSwitcher extends Modal {
     const maxTotalWidth = 1400;
     const gap = Math.max(minGap, Math.min(HORIZONTAL_GAP, maxTotalWidth / Math.max(sorted.length - 1, 1)));
 
-    sorted.forEach((node, index) => {
-      node.x = centerX + (index - (sorted.length - 1) / 2) * gap;
-      node.y = y;
-    });
+    if (horizontal) {
+      // Horizontal orientation: stack vertically (vary Y)
+      sorted.forEach((node, index) => {
+        node.x = centerX;
+        node.y = y + (index - (sorted.length - 1) / 2) * VERTICAL_GAP;
+      });
+    } else {
+      // Vertical orientation: stack horizontally (vary X)
+      sorted.forEach((node, index) => {
+        node.x = centerX + (index - (sorted.length - 1) / 2) * gap;
+        node.y = y;
+      });
+    }
   }
 
   private renderEdges(edgeLayer: SVGSVGElement) {
@@ -361,6 +397,14 @@ export class GraphSwitcher extends Modal {
     this.scope.register([], 'a', () => this.moveSelection('left'));
     this.scope.register([], 'd', () => this.moveSelection('right'));
     this.scope.register([], 'Enter', () => this.handleEnter());
+    this.scope.register(['Shift'], 'Enter', () => this.toggleOrientation());
+  }
+
+  private toggleOrientation(): false {
+    this.horizontalOrientation = !this.horizontalOrientation;
+    this.render();
+    requestAnimationFrame(() => { this.centerSelectedNode(); });
+    return false;
   }
 
   private moveSelection(direction: 'up' | 'down' | 'left' | 'right'): false {
