@@ -5,6 +5,7 @@ interface BCItem {
   file: TFile;
   relation: Relation;
   edgeType: string;
+  depth: number;
 }
 
 type Relation = 'parent' | 'child' | 'sibling' | 'related';
@@ -24,25 +25,47 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
   }
 
   private buildItems() {
-    const seen = new Set<string>();
-    const parents: BCItem[] = [];
+    const seen = new Set<string>([this.rootFile.path]);
+    const directNeighbors = this.getNeighbors(this.rootFile);
+    const parents = directNeighbors.filter((item) => item.relation === 'parent');
 
-    for (const item of this.getNeighbors(this.rootFile)) {
-      if (seen.has(item.file.path)) continue;
-      this.items.push(item);
-      seen.add(item.file.path);
-      if (item.relation === 'parent') {
-        parents.push(item);
+    this.addHierarchy('parent', seen);
+    this.addHierarchy('child', seen);
+
+    for (const item of directNeighbors) {
+      if (item.relation === 'related') {
+        this.addItem(item, seen);
       }
     }
 
     for (const parent of parents) {
       for (const item of this.getNeighbors(parent.file)) {
-        if (item.relation !== 'child' || item.file.path === this.rootFile.path || seen.has(item.file.path)) continue;
-        this.items.push({ ...item, relation: 'sibling' });
-        seen.add(item.file.path);
+        if (item.relation === 'child') {
+          this.addItem({ ...item, relation: 'sibling' }, seen);
+        }
       }
     }
+  }
+
+  private addHierarchy(relation: 'parent' | 'child', seen: Set<string>) {
+    const visited = new Set<string>([this.rootFile.path]);
+    const queue: { file: TFile; depth: number }[] = [{ file: this.rootFile, depth: 0 }];
+
+    for (const current of queue) {
+      for (const item of this.getNeighbors(current.file)) {
+        if (item.relation !== relation || visited.has(item.file.path)) continue;
+        const depth = current.depth + 1;
+        visited.add(item.file.path);
+        queue.push({ file: item.file, depth });
+        this.addItem({ ...item, depth }, seen);
+      }
+    }
+  }
+
+  private addItem(item: BCItem, seen: Set<string>) {
+    if (seen.has(item.file.path)) return;
+    this.items.push(item);
+    seen.add(item.file.path);
   }
 
   private getNeighbors(file: TFile): BCItem[] {
@@ -64,6 +87,7 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
       file,
       relation: this.getRelation(edgeType, direction),
       edgeType: edgeType ?? 'unknown edge',
+      depth: 1,
     };
   }
 
@@ -87,15 +111,22 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
 
     const item = match.item;
 
-    const iconEl = el.createSpan('bread-trail-switcher-icon');
-    const icon = item.relation === 'parent' ? 'arrow-up' : item.relation === 'child' ? 'arrow-down' : 'link';
-    setIcon(iconEl, icon);
+    const iconEl = el.createSpan('bread-trail-switcher-icons');
+    if (item.relation === 'parent' || item.relation === 'child') {
+      const icon = item.relation === 'parent' ? 'arrow-up' : 'arrow-down';
+      for (let index = 0; index < item.depth; index++) {
+        setIcon(iconEl.createSpan('bread-trail-switcher-icon'), icon);
+      }
+    } else {
+      setIcon(iconEl.createSpan('bread-trail-switcher-icon'), item.relation === 'sibling' ? 'minus' : 'link');
+    }
 
     const nameEl = el.createSpan('bread-trail-switcher-name');
     nameEl.setText(item.file.basename);
 
     const metaEl = el.createSpan('bread-trail-switcher-meta');
-    metaEl.setText(`${this.capitalize(item.relation)} via ${item.edgeType}`);
+    const depthLabel = item.depth > 1 ? ` · ${item.depth} levels` : '';
+    metaEl.setText(`${this.capitalize(item.relation)}${depthLabel} via ${item.edgeType}`);
   }
 
   onChooseItem(item: BCItem, _evt: MouseEvent | KeyboardEvent) {

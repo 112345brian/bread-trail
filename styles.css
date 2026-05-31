@@ -68,14 +68,18 @@
   padding: 4px 8px;
 }
 
-.bread-trail-switcher-icon {
+.bread-trail-switcher-icons {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.bread-trail-switcher-icon {
+  display: flex;
+  width: 16px;
+  height: 16px;
 }
 
 .bread-trail-switcher-name {
