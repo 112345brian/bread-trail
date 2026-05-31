@@ -12,7 +12,7 @@ interface GraphNode {
   y: number;
 }
 
-type Relation = 'current' | 'parent' | 'child' | 'previous' | 'next' | 'sibling' | 'related';
+type Relation = 'current' | 'parent' | 'child' | 'previous' | 'next' | 'sibling' | 'sequence-child' | 'related';
 type Direction = 'incoming' | 'outgoing';
 
 const CENTER_X = 700;
@@ -69,6 +69,7 @@ export class GraphSwitcher extends Modal {
     this.addHierarchy(nodes, seen, 'parent', this.settings.parentDepth);
     this.addHierarchy(nodes, seen, 'child', this.settings.childDepth);
     this.addSecondaryNodes(nodes, seen);
+    this.addSequenceChildren(nodes, seen);
 
     this.layoutNodes(nodes);
     return nodes;
@@ -126,12 +127,26 @@ export class GraphSwitcher extends Modal {
     }
   }
 
+  private addSequenceChildren(nodes: GraphNode[], seen: Set<string>) {
+    if (!this.settings.showSequenceChildren) return;
+
+    const sequenceNodes = nodes.filter((node) => node.relation === 'previous' || node.relation === 'next');
+    for (const sequenceNode of sequenceNodes) {
+      for (const item of this.getNeighbors(sequenceNode.file)) {
+        if (item.relation !== 'child' || seen.has(item.file.path)) continue;
+        nodes.push({ ...item, relation: 'sequence-child', sourcePath: sequenceNode.file.path, x: 0, y: 0 });
+        seen.add(item.file.path);
+      }
+    }
+  }
+
   private layoutNodes(nodes: GraphNode[]) {
     const previous = nodes.filter((node) => node.relation === 'previous');
     const next = nodes.filter((node) => node.relation === 'next');
     const parents = nodes.filter((node) => node.relation === 'parent');
     const children = nodes.filter((node) => node.relation === 'child');
     const siblings = nodes.filter((node) => node.relation === 'sibling');
+    const sequenceChildren = nodes.filter((node) => node.relation === 'sequence-child');
     const related = nodes.filter((node) => node.relation === 'related');
 
     previous.forEach((node) => {
@@ -144,8 +159,21 @@ export class GraphSwitcher extends Modal {
     });
     this.layoutHierarchy(parents, -1);
     this.layoutHierarchy(children, 1);
+    this.layoutSequenceChildren(sequenceChildren, nodes);
     this.layoutRow(siblings, CENTER_Y + VERTICAL_GAP, CENTER_X);
     this.layoutRow(related, CENTER_Y + VERTICAL_GAP * 2, CENTER_X);
+  }
+
+  private layoutSequenceChildren(nodes: GraphNode[], allNodes: GraphNode[]) {
+    const parentsByPath = new Map(allNodes.map((node) => [node.file.path, node]));
+    const sourcePaths = new Set(nodes.map((node) => node.sourcePath));
+
+    for (const sourcePath of sourcePaths) {
+      const parent = parentsByPath.get(sourcePath);
+      if (!parent) continue;
+      const children = nodes.filter((node) => node.sourcePath === sourcePath);
+      this.layoutRow(children, CENTER_Y + VERTICAL_GAP, parent.x);
+    }
   }
 
   private layoutHierarchy(nodes: GraphNode[], direction: -1 | 1) {
@@ -209,6 +237,7 @@ export class GraphSwitcher extends Modal {
     legendEl.createSpan({ text: '← previous' });
     legendEl.createSpan({ text: '→ next' });
     legendEl.createSpan({ text: '− sibling' });
+    legendEl.createSpan({ text: '↓ sequence child' });
     legendEl.createSpan({ text: '↗ related' });
   }
 
@@ -249,7 +278,7 @@ export class GraphSwitcher extends Modal {
 
   private getIcon(relation: Relation): string {
     if (relation === 'parent') return 'arrow-up';
-    if (relation === 'child') return 'arrow-down';
+    if (relation === 'child' || relation === 'sequence-child') return 'arrow-down';
     if (relation === 'previous') return 'arrow-left';
     if (relation === 'next') return 'arrow-right';
     if (relation === 'sibling') return 'minus';
