@@ -12,6 +12,7 @@ export class OutlineModal extends Modal {
   private rootFile: TFile;
   private contentContainer!: HTMLElement;
   private graphUpdateHandler: () => void;
+  private maxDepth = 50; // Prevent runaway recursion
 
   constructor(app: App, file: TFile, bc: BreadcrumbsPlugin) {
     super(app);
@@ -39,6 +40,10 @@ export class OutlineModal extends Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
+    // Note: BC plugin doesn't expose an unsubscribe API for events.
+    // The handler is a bound arrow function, so it won't prevent GC of the modal,
+    // but it will continue to fire refresh() on a closed modal until BC reloads.
+    // This is a known limitation of the BC plugin API.
   }
 
   private refresh() {
@@ -48,7 +53,7 @@ export class OutlineModal extends Modal {
   }
 
   private buildTree(file: TFile, depth: number, visited: Set<string>): TreeNode {
-    if (visited.has(file.path)) {
+    if (visited.has(file.path) || depth > this.maxDepth) {
       return { file, children: [], depth };
     }
     visited.add(file.path);
