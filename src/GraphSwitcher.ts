@@ -22,6 +22,8 @@ const VERTICAL_GAP = 120;
 
 export class GraphSwitcher extends Modal {
   private nodes: GraphNode[] = [];
+  private nodeElements = new Map<string, HTMLElement>();
+  private selectedPath: string;
 
   constructor(
     app: App,
@@ -30,6 +32,7 @@ export class GraphSwitcher extends Modal {
     private settings: BreadTrailSettings,
   ) {
     super(app);
+    this.selectedPath = rootFile.path;
     this.registerDirectionalHotkeys();
   }
 
@@ -37,18 +40,16 @@ export class GraphSwitcher extends Modal {
     this.titleEl.setText('Breadcrumb graph switcher');
     this.contentEl.addClass('bread-trail-graph-modal');
     this.contentEl.createEl('p', {
-      text: 'Select a note to open it. Use cmd plus an arrow key to open the nearest note in that direction.',
+      text: 'Use the arrow keys or wasd to select a note. Press enter to open it.',
       cls: 'mod-muted bread-trail-graph-help',
     });
 
     this.nodes = this.buildNodes();
-    const viewportEl = this.contentEl.createDiv('bread-trail-graph-viewport');
-    const stageEl = viewportEl.createDiv('bread-trail-graph-stage');
+    const stageEl = this.contentEl.createDiv('bread-trail-graph-stage');
     const edgeLayer = stageEl.createSvg('svg', { cls: 'bread-trail-graph-edges' });
     this.renderEdges(edgeLayer);
     this.renderNodes(stageEl);
     this.renderLegend();
-    window.setTimeout(() => this.centerViewport(viewportEl), 0);
   }
 
   private buildNodes(): GraphNode[] {
@@ -194,10 +195,11 @@ export class GraphSwitcher extends Modal {
         nodeEl.createSpan({ text: String(node.depth), cls: 'bread-trail-graph-node-depth' });
       }
       nodeEl.addEventListener('click', () => {
-        this.close();
-        void this.app.workspace.getLeaf('tab').openFile(node.file);
+        this.selectNode(node.file.path);
       });
+      this.nodeElements.set(node.file.path, nodeEl);
     }
+    this.selectNode(this.selectedPath);
   }
 
   private renderLegend() {
@@ -256,27 +258,58 @@ export class GraphSwitcher extends Modal {
   }
 
   private registerDirectionalHotkeys() {
-    this.scope.register(['Mod'], 'ArrowUp', () => this.openNearest('parent'));
-    this.scope.register(['Mod'], 'ArrowDown', () => this.openNearest('child'));
-    this.scope.register(['Mod'], 'ArrowLeft', () => this.openNearest('previous'));
-    this.scope.register(['Mod'], 'ArrowRight', () => this.openNearest('next'));
+    this.scope.register([], 'ArrowUp', () => this.moveSelection('up'));
+    this.scope.register([], 'ArrowDown', () => this.moveSelection('down'));
+    this.scope.register([], 'ArrowLeft', () => this.moveSelection('left'));
+    this.scope.register([], 'ArrowRight', () => this.moveSelection('right'));
+    this.scope.register([], 'w', () => this.moveSelection('up'));
+    this.scope.register([], 's', () => this.moveSelection('down'));
+    this.scope.register([], 'a', () => this.moveSelection('left'));
+    this.scope.register([], 'd', () => this.moveSelection('right'));
+    this.scope.register([], 'Enter', () => this.openSelected());
   }
 
-  private openNearest(relation: 'parent' | 'child' | 'previous' | 'next'): false {
-    const item = this.getNeighbors(this.rootFile).find((neighbor) => neighbor.relation === relation);
-    if (!item) return false;
-    this.close();
-    void this.app.workspace.getLeaf('tab').openFile(item.file);
+  private moveSelection(direction: 'up' | 'down' | 'left' | 'right'): false {
+    const current = this.nodes.find((node) => node.file.path === this.selectedPath);
+    if (!current) return false;
+
+    const next = this.nodes
+      .filter((node) => node.file.path !== current.file.path && this.isInDirection(current, node, direction))
+      .map((node) => ({ node, score: this.getDirectionalDistance(current, node, direction) }))
+      .sort((left, right) => left.score - right.score)[0]?.node;
+    if (next) this.selectNode(next.file.path);
     return false;
+  }
+
+  private selectNode(path: string) {
+    this.nodeElements.get(this.selectedPath)?.removeClass('is-selected');
+    this.selectedPath = path;
+    this.nodeElements.get(path)?.addClass('is-selected');
+  }
+
+  private openSelected(): false {
+    const selected = this.nodes.find((node) => node.file.path === this.selectedPath);
+    if (!selected) return false;
+    this.close();
+    void this.app.workspace.getLeaf('tab').openFile(selected.file);
+    return false;
+  }
+
+  private isInDirection(current: GraphNode, candidate: GraphNode, direction: 'up' | 'down' | 'left' | 'right'): boolean {
+    if (direction === 'up') return candidate.y < current.y;
+    if (direction === 'down') return candidate.y > current.y;
+    if (direction === 'left') return candidate.x < current.x;
+    return candidate.x > current.x;
+  }
+
+  private getDirectionalDistance(current: GraphNode, candidate: GraphNode, direction: 'up' | 'down' | 'left' | 'right'): number {
+    const x = Math.abs(candidate.x - current.x);
+    const y = Math.abs(candidate.y - current.y);
+    return direction === 'up' || direction === 'down' ? y + x * 2 : x + y * 2;
   }
 
   private capitalize(text: string): string {
     return text.charAt(0).toUpperCase() + text.slice(1);
-  }
-
-  private centerViewport(viewportEl: HTMLElement) {
-    viewportEl.scrollLeft = CENTER_X - viewportEl.clientWidth / 2;
-    viewportEl.scrollTop = CENTER_Y - viewportEl.clientHeight / 2;
   }
 
   private getLabel(file: TFile): string {

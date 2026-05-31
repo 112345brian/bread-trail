@@ -105,18 +105,14 @@
   margin-top: 0;
 }
 
-.bread-trail-graph-viewport {
-  max-height: 70vh;
-  margin: 12px auto;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  overflow: auto;
-}
-
 .bread-trail-graph-stage {
   position: relative;
   width: 1400px;
-  height: 780px;
+  max-width: 100%;
+  height: min(70vh, 780px);
+  margin: 12px auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
   background: var(--background-secondary);
   overflow: hidden;
 }
@@ -161,9 +157,14 @@
 
 .bread-trail-graph-node-current {
   border-color: var(--interactive-accent);
+  font-weight: 600;
+}
+
+.bread-trail-graph-node.is-selected {
+  border-color: var(--interactive-accent);
   background: var(--interactive-accent);
   color: var(--text-on-accent);
-  font-weight: 600;
+  box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
 }
 
 .bread-trail-graph-node-icon {
