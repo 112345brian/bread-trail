@@ -28,6 +28,8 @@ export class GraphSwitcher extends Modal {
   private edgeLayerEl?: SVGSVGElement;
   private confirmed = false;
   private initialFile: TFile;
+  private lastEnterPress = 0;
+  private renderTimeout?: ReturnType<typeof setTimeout>;
 
   constructor(
     app: App,
@@ -368,17 +370,39 @@ export class GraphSwitcher extends Modal {
     const selected = this.nodes.find((node) => node.file.path === this.selectedPath);
     if (!selected) return false;
 
-    // First press: re-center graph around selected node
-    if (selected.file.path !== this.rootFile.path) {
-      this.rootFile = selected.file;
-      this.render();
-      requestAnimationFrame(() => {
-        this.centerSelectedNode();
-      });
+    const now = Date.now();
+    const timeSinceLastEnter = now - this.lastEnterPress;
+
+    // Double-tap detection: if Enter pressed within 500ms, open immediately
+    if (timeSinceLastEnter < 500) {
+      if (this.renderTimeout) {
+        clearTimeout(this.renderTimeout);
+        this.renderTimeout = undefined;
+      }
+      this.confirmed = true;
+      this.close();
+      void this.app.workspace.getLeaf('tab').openFile(selected.file);
       return false;
     }
 
-    // Second press (or current node already centered): open and close
+    this.lastEnterPress = now;
+
+    // First press: re-center graph around selected node
+    if (selected.file.path !== this.rootFile.path) {
+      // Debounce: wait 150ms before rendering in case of double-tap
+      if (this.renderTimeout) clearTimeout(this.renderTimeout);
+      this.renderTimeout = setTimeout(() => {
+        this.rootFile = selected.file;
+        this.render();
+        requestAnimationFrame(() => {
+          this.centerSelectedNode();
+        });
+        this.renderTimeout = undefined;
+      }, 150);
+      return false;
+    }
+
+    // Already centered: open immediately
     this.confirmed = true;
     this.close();
     void this.app.workspace.getLeaf('tab').openFile(selected.file);
