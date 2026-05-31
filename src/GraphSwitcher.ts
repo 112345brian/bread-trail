@@ -228,11 +228,17 @@ export class GraphSwitcher extends Modal {
   private layoutRow(nodes: GraphNode[], y: number, centerX: number) {
     if (nodes.length === 0) return;
 
-    // Dynamic gap to prevent overflow — max 1200px total width
-    const gap = Math.min(HORIZONTAL_GAP, 1200 / Math.max(nodes.length - 1, 1));
+    // Sort alphabetically for readability when many nodes
+    const sorted = [...nodes].sort((a, b) => a.file.basename.localeCompare(b.file.basename));
 
-    nodes.forEach((node, index) => {
-      node.x = centerX + (index - (nodes.length - 1) / 2) * gap;
+    // Dynamic gap based on node count — ensure minimum 140px spacing
+    // For many nodes, reduce gap but never below 140px to prevent overlap
+    const minGap = 140;
+    const maxTotalWidth = 1300;
+    const gap = Math.max(minGap, Math.min(HORIZONTAL_GAP, maxTotalWidth / Math.max(sorted.length - 1, 1)));
+
+    sorted.forEach((node, index) => {
+      node.x = centerX + (index - (sorted.length - 1) / 2) * gap;
       node.y = y;
     });
   }
