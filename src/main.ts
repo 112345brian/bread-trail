@@ -1,6 +1,7 @@
 import { App, Modal, Notice, Plugin, TFile } from 'obsidian';
 import { OutlineModal } from './OutlineModal';
 import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
+import { GraphSwitcher } from './GraphSwitcher';
 import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
 
@@ -222,6 +223,24 @@ export default class BreadTrail extends Plugin {
         }
 
         new BreadcrumbQuickSwitcher(this.app, file, this.bc, this.settings, true).open();
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'graph-switch',
+      name: 'Show breadcrumb graph switcher',
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (checking) return !!file && file.extension === 'md';
+        if (!file) return false;
+
+        if (!this.bc) {
+          new BreadcrumbsMissingModal(this.app).open();
+          return true;
+        }
+
+        new GraphSwitcher(this.app, file, this.bc, this.settings).open();
         return true;
       },
     });
