@@ -31,6 +31,10 @@ export class GraphSwitcher extends Modal {
   private lastEnterPress = 0;
   private renderTimeout?: ReturnType<typeof setTimeout>;
   private horizontalOrientation = false;
+  private isDragging = false;
+  private dragStart = { x: 0, y: 0 };
+  private panOffset = { x: 0, y: 0 };
+  private centerTimeout?: ReturnType<typeof setTimeout>;
 
   constructor(
     app: App,
@@ -80,6 +84,7 @@ export class GraphSwitcher extends Modal {
       this.stageEl = stageEl;
       viewport = stageEl.createDiv('bread-trail-graph-viewport');
       this.edgeLayerEl = viewport.createSvg('svg', { cls: 'bread-trail-graph-edges' });
+      this.registerMouseHandlers(stageEl, viewport);
     } else {
       viewport = this.stageEl.querySelector('.bread-trail-graph-viewport') as HTMLElement;
     }
@@ -323,7 +328,12 @@ export class GraphSwitcher extends Modal {
         nodeEl.createSpan({ text: String(node.depth), cls: 'bread-trail-graph-node-depth' });
       }
       nodeEl.addEventListener('click', () => {
-        if (this.selectedPath === node.file.path) {
+        if (this.settings.graphSingleClickOpens) {
+          // Single click opens immediately
+          this.confirmed = true;
+          this.close();
+          void this.app.workspace.getLeaf('tab').openFile(node.file);
+        } else if (this.selectedPath === node.file.path) {
           // Double-click behavior: trigger enter
           void this.handleEnter();
         } else {
@@ -419,16 +429,23 @@ export class GraphSwitcher extends Modal {
       .filter((node) => node.file.path !== current.file.path && this.isInDirection(current, node, direction))
       .map((node) => ({ node, score: this.getDirectionalDistance(current, node, direction) }))
       .sort((left, right) => left.score - right.score)[0]?.node;
-    if (next) this.selectNode(next.file.path);
+    if (next) {
+      // Cancel debounce and immediately center when using arrow keys
+      if (this.centerTimeout) clearTimeout(this.centerTimeout);
+      this.selectNode(next.file.path, true);
+      this.centerSelectedNode();
+    }
     return false;
   }
 
-  private selectNode(path: string) {
+  private selectNode(path: string, skipCenter = false) {
     this.nodeElements.get(this.selectedPath)?.removeClass('is-selected');
     this.selectedPath = path;
     this.nodeElements.get(path)?.addClass('is-selected');
     this.updateEdgesForSelection();
-    this.centerSelectedNode();
+    if (!skipCenter) {
+      this.centerSelectedNodeDebounced();
+    }
   }
 
   private updateEdgesForSelection() {
@@ -523,6 +540,14 @@ export class GraphSwitcher extends Modal {
     return direction === 'up' || direction === 'down' ? y + x * 2 : x + y * 2;
   }
 
+  private centerSelectedNodeDebounced() {
+    // Debounce centering by 500ms to avoid jarring animation when clicking rapidly
+    if (this.centerTimeout) clearTimeout(this.centerTimeout);
+    this.centerTimeout = setTimeout(() => {
+      this.centerSelectedNode();
+    }, 500);
+  }
+
   private centerSelectedNode() {
     const selected = this.nodes.find((node) => node.file.path === this.selectedPath);
     if (!selected || !this.stageEl) return;
@@ -533,8 +558,37 @@ export class GraphSwitcher extends Modal {
 
     const viewport = this.stageEl.querySelector('.bread-trail-graph-viewport') as HTMLElement;
     if (viewport) {
-      viewport.style.transform = `translate(${centerX - selected.x}px, ${centerY - selected.y}px)`;
+      this.panOffset = { x: centerX - selected.x, y: centerY - selected.y };
+      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
     }
+  }
+
+  private registerMouseHandlers(stageEl: HTMLElement, viewport: HTMLElement) {
+    stageEl.addEventListener('mousedown', (e) => {
+      if (e.target !== stageEl && e.target !== viewport && !(e.target as HTMLElement).closest('.bread-trail-graph-edges')) {
+        return; // Don't pan if clicking on a node
+      }
+      this.isDragging = true;
+      this.dragStart = { x: e.clientX - this.panOffset.x, y: e.clientY - this.panOffset.y };
+      stageEl.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!this.isDragging) return;
+      this.panOffset = {
+        x: e.clientX - this.dragStart.x,
+        y: e.clientY - this.dragStart.y,
+      };
+      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (this.isDragging) {
+        this.isDragging = false;
+        if (this.stageEl) this.stageEl.style.cursor = '';
+      }
+    });
   }
 
   private capitalize(text: string): string {
