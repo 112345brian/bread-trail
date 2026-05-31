@@ -114,10 +114,12 @@ export class GraphSwitcher extends Modal {
       }
     }
 
+    if (!this.settings.showGraphSiblings) return;
+
     for (const parent of parents) {
       for (const item of this.getNeighbors(parent.file)) {
         if (item.relation !== 'child' || seen.has(item.file.path)) continue;
-        nodes.push({ ...item, relation: 'sibling', sourcePath: this.rootFile.path, x: 0, y: 0 });
+        nodes.push({ ...item, relation: 'sibling', sourcePath: parent.file.path, x: 0, y: 0 });
         seen.add(item.file.path);
       }
     }

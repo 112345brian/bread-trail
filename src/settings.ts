@@ -7,6 +7,7 @@ export interface BreadTrailSettings {
   previousDepth: number;
   nextDepth: number;
   graphLabelProperty: string;
+  showGraphSiblings: boolean;
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   previousDepth: 3,
   nextDepth: 3,
   graphLabelProperty: 'aliases',
+  showGraphSiblings: false,
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -30,6 +32,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     previousDepth: normalizeDepth(settings.previousDepth, DEFAULT_SETTINGS.previousDepth),
     nextDepth: normalizeDepth(settings.nextDepth, DEFAULT_SETTINGS.nextDepth),
     graphLabelProperty: typeof settings.graphLabelProperty === 'string' ? settings.graphLabelProperty.trim() : DEFAULT_SETTINGS.graphLabelProperty,
+    showGraphSiblings: typeof settings.showGraphSiblings === 'boolean' ? settings.showGraphSiblings : DEFAULT_SETTINGS.showGraphSiblings,
   };
 }
 
@@ -59,6 +62,17 @@ class BreadTrailSettingTab extends PluginSettingTab {
         text.setValue(this.plugin.settings.graphLabelProperty);
         text.onChange(async (value) => {
           this.plugin.settings.graphLabelProperty = value.trim();
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Show siblings in graph')
+      .setDesc('Include other children of the active note’s direct parents. Sibling links are inferred from the shared parent.')
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.showGraphSiblings);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.showGraphSiblings = value;
           await this.plugin.saveSettings();
         });
       });
