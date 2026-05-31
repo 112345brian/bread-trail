@@ -10,6 +10,7 @@ export interface BreadTrailSettings {
   showGraphSiblings: boolean;
   showSequenceChildren: boolean;
   graphSingleClickOpens: boolean;
+  graphNodeSortOrder: 'alphabetical' | 'importance';
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
@@ -23,6 +24,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   showGraphSiblings: false,
   showSequenceChildren: true,
   graphSingleClickOpens: false,
+  graphNodeSortOrder: 'alphabetical',
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -39,6 +41,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     showGraphSiblings: typeof settings.showGraphSiblings === 'boolean' ? settings.showGraphSiblings : DEFAULT_SETTINGS.showGraphSiblings,
     showSequenceChildren: typeof settings.showSequenceChildren === 'boolean' ? settings.showSequenceChildren : DEFAULT_SETTINGS.showSequenceChildren,
     graphSingleClickOpens: typeof settings.graphSingleClickOpens === 'boolean' ? settings.graphSingleClickOpens : DEFAULT_SETTINGS.graphSingleClickOpens,
+    graphNodeSortOrder: settings.graphNodeSortOrder === 'importance' ? 'importance' : 'alphabetical',
   };
 }
 
@@ -107,6 +110,21 @@ class BreadTrailSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.graphSingleClickOpens);
         toggle.onChange(async (value) => {
           this.plugin.settings.graphSingleClickOpens = value;
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Graph node sort order')
+      .setDesc('Alphabetical sorts nodes A-Z. Importance places nodes with more descendants toward the center (often more frequently referenced hubs).')
+      .addDropdown((dropdown) => {
+        dropdown.addOption('alphabetical', 'Alphabetical');
+        dropdown.addOption('importance', 'Importance (by descendant count)');
+        dropdown.setValue(this.plugin.settings.graphNodeSortOrder);
+        dropdown.onChange(async (value) => {
+          this.plugin.settings.graphNodeSortOrder = value as 'alphabetical' | 'importance';
           await this.plugin.saveSettings().catch((err) => {
             console.error('Failed to save Bread Trail settings:', err);
           });
