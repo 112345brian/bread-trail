@@ -1,12 +1,22 @@
 import { App, Modal, Notice, Plugin, TFile } from 'obsidian';
 import { OutlineModal } from './OutlineModal';
+import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
+
+export interface BreadcrumbEdge {
+  source?: string;
+  target?: string;
+  edge_type?: string;
+  source_path?(graph: BreadcrumbsGraph): string;
+  target_path?(graph: BreadcrumbsGraph): string;
+}
+
+export interface BreadcrumbsGraph {
+  get_outgoing_edges(path: string): { to_array(): BreadcrumbEdge[] };
+  get_incoming_edges(path: string): { to_array(): BreadcrumbEdge[] };
+}
 
 export interface BreadcrumbsPlugin {
-  graph: {
-    get_outgoing_edges(path: string): { to_array(): any[] };
-    get_incoming_edges(path: string): { to_array(): any[] };
-    target_path?(edge: any): string;
-  };
+  graph: BreadcrumbsGraph;
   settings: {
     edge_fields: string[];
   };
@@ -15,8 +25,22 @@ export interface BreadcrumbsPlugin {
   };
 }
 
+interface AppWithPlugins extends App {
+  plugins?: {
+    plugins?: {
+      breadcrumbs?: BreadcrumbsPlugin;
+    };
+  };
+}
+
+interface AppWithSettings extends App {
+  setting: {
+    openTabById(id: string): void;
+  };
+}
+
 function getBreadcrumbs(app: App): BreadcrumbsPlugin | null {
-  const bc = (app as any).plugins?.plugins?.breadcrumbs;
+  const bc = (app as AppWithPlugins).plugins?.plugins?.breadcrumbs;
   return bc?.graph ? bc : null;
 }
 
@@ -30,25 +54,25 @@ class BreadcrumbsMissingModal extends Modal {
     titleEl.setText('Breadcrumbs plugin required');
 
     contentEl.createEl('p', {
-      text: 'Bread Trail requires the Breadcrumbs plugin to work.',
+      text: 'Bread trail requires the breadcrumbs plugin to work.',
     });
 
     contentEl.createEl('p', {
-      text: 'Install it from Community Plugins:',
+      text: 'Install it from community plugins:',
       cls: 'mod-muted',
     });
 
     const steps = contentEl.createEl('ol');
-    steps.createEl('li', { text: 'Open Settings → Community Plugins' });
+    steps.createEl('li', { text: 'Open settings → community plugins' });
     steps.createEl('li', { text: 'Search for "breadcrumbs"' });
     steps.createEl('li', { text: 'Install and enable it' });
-    steps.createEl('li', { text: 'Reload Bread Trail' });
+    steps.createEl('li', { text: 'Reload bread trail' });
 
     const btnContainer = contentEl.createDiv({ cls: 'modal-button-container' });
 
-    btnContainer.createEl('button', { text: 'Open Community Plugins', cls: 'mod-cta' })
+    btnContainer.createEl('button', { text: 'Open community plugins', cls: 'mod-cta' })
       .addEventListener('click', () => {
-        (this.app as any).setting.openTabById('community-plugins');
+        (this.app as AppWithSettings).setting.openTabById('community-plugins');
         this.close();
       });
 
@@ -68,7 +92,7 @@ class TrailModal extends Modal {
 
   onOpen() {
     const { contentEl, titleEl } = this;
-    titleEl.setText('Bread Trail');
+    titleEl.setText('Bread trail');
 
     contentEl.createEl('p', {
       text: `Viewing: ${this.file.basename}`,
@@ -79,20 +103,24 @@ class TrailModal extends Modal {
     const incoming = this.bc.graph.get_incoming_edges(this.file.path).to_array();
 
     if (incoming.length > 0) {
-      contentEl.createEl('h3', { text: '↑ Parents' });
+      contentEl.createEl('h3', { text: '↑ parents' });
       const list = contentEl.createEl('ul');
-      incoming.forEach((edge: any) => {
+      incoming.forEach((edge) => {
         const sourcePath = edge.source_path?.(this.bc.graph) ?? edge.source;
-        list.createEl('li', { text: sourcePath });
+        if (sourcePath) {
+          list.createEl('li', { text: sourcePath });
+        }
       });
     }
 
     if (outgoing.length > 0) {
-      contentEl.createEl('h3', { text: '↓ Children' });
+      contentEl.createEl('h3', { text: '↓ children' });
       const list = contentEl.createEl('ul');
-      outgoing.forEach((edge: any) => {
+      outgoing.forEach((edge) => {
         const targetPath = edge.target_path?.(this.bc.graph) ?? edge.target;
-        list.createEl('li', { text: targetPath });
+        if (targetPath) {
+          list.createEl('li', { text: targetPath });
+        }
       });
     }
 
@@ -113,11 +141,11 @@ export default class BreadTrail extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       this.bc = getBreadcrumbs(this.app);
       if (!this.bc) {
-        new Notice('Bread Trail: Breadcrumbs plugin not found.');
+        new Notice('Bread trail: Breadcrumbs plugin not found.');
         new BreadcrumbsMissingModal(this.app).open();
         return;
       }
-      new Notice('Bread Trail loaded — Breadcrumbs detected.');
+      new Notice('Bread trail loaded — breadcrumbs detected.');
     });
 
     this.addCommand({
@@ -152,6 +180,24 @@ export default class BreadTrail extends Plugin {
         }
 
         new OutlineModal(this.app, file, this.bc).open();
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'quick-switch',
+      name: 'Quick switch to breadcrumb-related note',
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (checking) return !!file && file.extension === 'md';
+        if (!file) return false;
+
+        if (!this.bc) {
+          new BreadcrumbsMissingModal(this.app).open();
+          return true;
+        }
+
+        new BreadcrumbQuickSwitcher(this.app, file, this.bc).open();
         return true;
       },
     });

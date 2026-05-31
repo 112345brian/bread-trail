@@ -22,7 +22,7 @@ export class OutlineModal extends Modal {
 
   onOpen() {
     const { contentEl, titleEl } = this;
-    titleEl.setText('Breadcrumb Outline');
+    titleEl.setText('Breadcrumb outline');
 
     contentEl.createEl('p', {
       text: `Root: ${this.rootFile.basename}`,
@@ -58,6 +58,7 @@ export class OutlineModal extends Modal {
 
     for (const edge of outgoing) {
       const targetPath = edge.target_path?.(this.bc.graph) ?? edge.target;
+      if (!targetPath) continue;
       const childFile = this.app.vault.getAbstractFileByPath(targetPath);
       if (childFile instanceof TFile && childFile.extension === 'md') {
         children.push(this.buildTree(childFile, depth + 1, visited));
@@ -85,7 +86,7 @@ export class OutlineModal extends Modal {
 
     // Click to open file
     nameEl.addEventListener('click', () => {
-      this.app.workspace.getLeaf('tab').openFile(node.file);
+      void this.app.workspace.getLeaf('tab').openFile(node.file);
     });
 
     // Drag-and-drop handlers
@@ -109,7 +110,7 @@ export class OutlineModal extends Modal {
       nodeEl.removeClass('bread-trail-drop-target');
     });
 
-    nodeEl.addEventListener('drop', async (e) => {
+    nodeEl.addEventListener('drop', (e) => {
       e.preventDefault();
       nodeEl.removeClass('bread-trail-drop-target');
 
@@ -118,8 +119,7 @@ export class OutlineModal extends Modal {
 
       if (draggedPath === targetPath) return;
 
-      await this.reorderFiles(draggedPath, targetPath);
-      this.refresh();
+      void this.reorderFiles(draggedPath, targetPath).then(() => this.refresh());
     });
 
     // Render children
@@ -133,7 +133,7 @@ export class OutlineModal extends Modal {
     if (!(draggedFile instanceof TFile)) return;
 
     // Write `next: [[target]]` to the dragged file's frontmatter
-    await this.app.fileManager.processFrontMatter(draggedFile, (fm) => {
+    await this.app.fileManager.processFrontMatter(draggedFile, (fm: Record<string, unknown>) => {
       fm.next = `[[${targetPath.replace(/\.md$/, '')}]]`;
     });
   }
