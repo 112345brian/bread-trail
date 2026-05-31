@@ -201,6 +201,11 @@ export class GraphSwitcher extends Modal {
     const sequenceChildren = nodes.filter((node) => node.relation === 'sequence-child');
     const related = nodes.filter((node) => node.relation === 'related');
 
+    // Get actual node max-width from CSS variable for proper spacing
+    const computedStyle = this.stageEl ? getComputedStyle(this.stageEl) : getComputedStyle(document.documentElement);
+    const nodeMaxWidth = parseInt(computedStyle.getPropertyValue('--node-max-width') || '260', 10);
+    const minSequenceGap = nodeMaxWidth * 1.08;
+
     if (this.horizontalOrientation) {
       // Horizontal: parents left, children right, prev/next vertical
       this.layoutHierarchy(parents, -1, true);
@@ -219,11 +224,11 @@ export class GraphSwitcher extends Modal {
     } else {
       // Vertical: parents up, children down, prev/next horizontal
       previous.forEach((node) => {
-        node.x = CENTER_X - node.depth * HORIZONTAL_GAP;
+        node.x = CENTER_X - node.depth * minSequenceGap;
         node.y = CENTER_Y;
       });
       next.forEach((node) => {
-        node.x = CENTER_X + node.depth * HORIZONTAL_GAP;
+        node.x = CENTER_X + node.depth * minSequenceGap;
         node.y = CENTER_Y;
       });
       this.layoutHierarchy(parents, -1, false);
