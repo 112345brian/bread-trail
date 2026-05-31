@@ -1,6 +1,8 @@
 import { App, Modal, Notice, Plugin, TFile } from 'obsidian';
 import { OutlineModal } from './OutlineModal';
 import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
+import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
+import type { BreadTrailSettings } from './settings';
 
 export interface BreadcrumbEdge {
   source?: string;
@@ -135,8 +137,12 @@ class TrailModal extends Modal {
 
 export default class BreadTrail extends Plugin {
   private bc: BreadcrumbsPlugin | null = null;
+  settings: BreadTrailSettings = DEFAULT_SETTINGS;
 
   async onload() {
+    this.settings = normalizeSettings((await this.loadData()) as Partial<BreadTrailSettings> | null ?? {});
+    addSettingTab(this);
+
     // Check for Breadcrumbs on startup
     this.app.workspace.onLayoutReady(() => {
       this.bc = getBreadcrumbs(this.app);
@@ -197,7 +203,7 @@ export default class BreadTrail extends Plugin {
           return true;
         }
 
-        new BreadcrumbQuickSwitcher(this.app, file, this.bc).open();
+        new BreadcrumbQuickSwitcher(this.app, file, this.bc, this.settings).open();
         return true;
       },
     });
@@ -215,9 +221,13 @@ export default class BreadTrail extends Plugin {
           return true;
         }
 
-        new BreadcrumbQuickSwitcher(this.app, file, this.bc, true).open();
+        new BreadcrumbQuickSwitcher(this.app, file, this.bc, this.settings, true).open();
         return true;
       },
     });
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
   }
 }

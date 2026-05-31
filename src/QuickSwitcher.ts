@@ -1,5 +1,6 @@
 import { App, FuzzySuggestModal, TFile, setIcon, FuzzyMatch } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
+import type { BreadTrailSettings } from './settings';
 
 interface BCItem {
   file: TFile;
@@ -18,7 +19,13 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
   private rootFile: TFile;
   private items: BCItem[] = [];
 
-  constructor(app: App, file: TFile, bc: BreadcrumbsPlugin, private includeVaultFiles = false) {
+  constructor(
+    app: App,
+    file: TFile,
+    bc: BreadcrumbsPlugin,
+    private settings: BreadTrailSettings,
+    private includeVaultFiles = false,
+  ) {
     super(app);
     this.rootFile = file;
     this.bc = bc;
@@ -31,9 +38,11 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     const directNeighbors = this.getNeighbors(this.rootFile);
     const parents = directNeighbors.filter((item) => item.relation === 'parent');
 
-    const previous = this.getSequence('previous');
-    const next = this.getSequence('next');
-    this.addSequencePositions(previous, next);
+    const previousSequence = this.getSequence('previous');
+    const nextSequence = this.getSequence('next');
+    this.addSequencePositions(previousSequence, nextSequence);
+    const previous = previousSequence.slice(0, this.settings.previousDepth);
+    const next = nextSequence.slice(0, this.settings.nextDepth);
 
     previous.reverse();
     for (const item of previous) {
@@ -44,8 +53,8 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
       this.addItem(item, seen);
     }
 
-    this.addHierarchy('parent', seen);
-    this.addHierarchy('child', seen);
+    this.addHierarchy('parent', this.settings.parentDepth, seen);
+    this.addHierarchy('child', this.settings.childDepth, seen);
 
     for (const item of directNeighbors) {
       if (item.relation === 'related') {
@@ -97,13 +106,15 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
       items.push({ ...item, depth });
       current = item.file;
     }
+
   }
 
-  private addHierarchy(relation: 'parent' | 'child', seen: Set<string>) {
+  private addHierarchy(relation: 'parent' | 'child', maxDepth: number, seen: Set<string>) {
     const visited = new Set<string>([this.rootFile.path]);
     const queue: { file: TFile; depth: number }[] = [{ file: this.rootFile, depth: 0 }];
 
     for (const current of queue) {
+      if (current.depth >= maxDepth) continue;
       for (const item of this.getNeighbors(current.file)) {
         if (item.relation !== relation || visited.has(item.file.path)) continue;
         const depth = current.depth + 1;
