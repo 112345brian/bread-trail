@@ -237,7 +237,7 @@ export class GraphSwitcher extends Modal {
     const sorted = [...nodes].sort((a, b) => a.file.basename.localeCompare(b.file.basename));
 
     // Get actual node max-width from CSS variable (fallback to 260px)
-    const computedStyle = getComputedStyle(document.documentElement);
+    const computedStyle = this.stageEl ? getComputedStyle(this.stageEl) : getComputedStyle(document.documentElement);
     const nodeMaxWidth = parseInt(computedStyle.getPropertyValue('--node-max-width') || '260', 10);
 
     // Minimum gap is node width + 8% padding to prevent overlap
@@ -379,7 +379,38 @@ export class GraphSwitcher extends Modal {
     this.nodeElements.get(this.selectedPath)?.removeClass('is-selected');
     this.selectedPath = path;
     this.nodeElements.get(path)?.addClass('is-selected');
+    this.updateEdgesForSelection();
     this.centerSelectedNode();
+  }
+
+  private updateEdgesForSelection() {
+    if (!this.edgeLayerEl) return;
+
+    // Clear existing edges
+    this.edgeLayerEl.empty();
+
+    const nodesByPath = new Map(this.nodes.map((node) => [node.file.path, node]));
+    const selectedNode = nodesByPath.get(this.selectedPath);
+    if (!selectedNode) return;
+
+    // Only render edges connected to the selected node
+    for (const node of this.nodes) {
+      if (node.file.path === this.selectedPath) continue;
+
+      // Check if this node is connected to the selected node
+      const isConnected = node.sourcePath === this.selectedPath ||
+                         selectedNode.sourcePath === node.file.path;
+
+      if (isConnected) {
+        const source = nodesByPath.get(node.sourcePath) ?? selectedNode;
+        const line = this.edgeLayerEl.createSvg('line');
+        line.setAttribute('x1', String(source.x));
+        line.setAttribute('y1', String(source.y));
+        line.setAttribute('x2', String(node.x));
+        line.setAttribute('y2', String(node.y));
+        line.addClass(`bread-trail-graph-edge-${node.relation}`);
+      }
+    }
   }
 
   private handleEnter(): false {
