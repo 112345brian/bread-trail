@@ -10,6 +10,7 @@ interface GraphNode {
   sourcePath: string;
   x: number;
   y: number;
+  sequencePosition?: number;
 }
 
 type Relation = 'current' | 'parent' | 'child' | 'previous' | 'next' | 'sibling' | 'sequence-child' | 'related';
@@ -123,8 +124,32 @@ export class GraphSwitcher extends Modal {
     this.addSecondaryNodes(nodes, seen);
     this.addSequenceChildren(nodes, seen);
 
+    this.assignSequencePositions(nodes);
     this.layoutNodes(nodes);
     return nodes;
+  }
+
+  private assignSequencePositions(nodes: GraphNode[]) {
+    const previous = nodes.filter((node) => node.relation === 'previous');
+    const next = nodes.filter((node) => node.relation === 'next');
+    const current = nodes.find((node) => node.relation === 'current');
+
+    const totalLength = previous.length + 1 + next.length;
+    const currentPosition = previous.length + 1;
+
+    if (current) {
+      current.sequencePosition = currentPosition;
+    }
+
+    // Previous nodes: reverse order (furthest is 1, closest is previous.length)
+    previous.forEach((node) => {
+      node.sequencePosition = currentPosition - node.depth;
+    });
+
+    // Next nodes: forward order (first is currentPosition + 1, etc.)
+    next.forEach((node) => {
+      node.sequencePosition = currentPosition + node.depth;
+    });
   }
 
   private addSequence(nodes: GraphNode[], seen: Set<string>, relation: 'previous' | 'next', maxDepth: number) {
@@ -201,9 +226,9 @@ export class GraphSwitcher extends Modal {
     const sequenceChildren = nodes.filter((node) => node.relation === 'sequence-child');
     const related = nodes.filter((node) => node.relation === 'related');
 
-    // Viewport-relative spacing: ~20% of stage width for sequence gaps
+    // Viewport-relative spacing: ~25% of stage width for sequence gaps (generous for long titles)
     const stageWidth = this.stageEl ? this.stageEl.getBoundingClientRect().width : 1400;
-    const sequenceGap = stageWidth * 0.2;
+    const sequenceGap = Math.max(stageWidth * 0.25, 300);
 
     if (this.horizontalOrientation) {
       // Horizontal: parents left, children right, prev/next vertical
@@ -290,14 +315,14 @@ export class GraphSwitcher extends Modal {
       sorted = [...nodes].sort((a, b) => a.file.basename.localeCompare(b.file.basename));
     }
 
-    // Use viewport-relative spacing: aim for 20% of stage width per node
+    // Use viewport-relative spacing: aim for 25% of stage width per node (generous)
     const stageWidth = this.stageEl ? this.stageEl.getBoundingClientRect().width : 1400;
-    const idealGap = stageWidth * 0.2;
+    const idealGap = stageWidth * 0.25;
 
     // Get actual node max-width from CSS for minimum safe gap
     const computedStyle = this.stageEl ? getComputedStyle(this.stageEl) : getComputedStyle(document.documentElement);
     const nodeMaxWidth = parseInt(computedStyle.getPropertyValue('--node-max-width') || '260', 10);
-    const minGap = nodeMaxWidth * 1.08;
+    const minGap = nodeMaxWidth * 1.15; // 15% padding
 
     // Use ideal gap but never go below minimum safe gap
     const gap = Math.max(minGap, idealGap);
@@ -345,12 +370,16 @@ export class GraphSwitcher extends Modal {
       nodeEl.setAttribute('aria-label', `${this.capitalize(node.relation)}: ${label}`);
       setIcon(nodeEl.createSpan('bread-trail-graph-node-icon'), this.getIcon(node.relation));
       nodeEl.createSpan({ text: label, cls: 'bread-trail-graph-node-label' });
-      if (node.depth > 1) {
-        const depthEl = nodeEl.createSpan({ text: String(node.depth), cls: 'bread-trail-graph-node-depth' });
-        // Use superscript for sequence nodes (prev/next)
-        if (node.relation === 'previous' || node.relation === 'next') {
-          depthEl.addClass('bread-trail-graph-node-sequence-number');
-        }
+
+      // Show sequence position for prev/next/current nodes
+      if ((node.relation === 'previous' || node.relation === 'next' || node.relation === 'current') && node.sequencePosition) {
+        const posEl = nodeEl.createSpan({
+          text: String(node.sequencePosition),
+          cls: 'bread-trail-graph-node-depth bread-trail-graph-node-sequence-number'
+        });
+      } else if (node.depth > 1) {
+        // Show depth for hierarchical nodes
+        nodeEl.createSpan({ text: String(node.depth), cls: 'bread-trail-graph-node-depth' });
       }
       nodeEl.addEventListener('click', () => {
         if (this.settings.graphSingleClickOpens) {
