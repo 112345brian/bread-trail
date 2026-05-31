@@ -198,19 +198,19 @@ export class GraphSwitcher extends Modal {
 
     if (this.horizontalOrientation) {
       // Horizontal: parents left, children right, prev/next vertical
-      parents.forEach((node) => {
-        node.x = CENTER_X - node.depth * HORIZONTAL_GAP;
-        node.y = CENTER_Y;
+      this.layoutHierarchy(parents, -1, true);
+      this.layoutHierarchy(children, 1, true);
+      previous.forEach((node) => {
+        node.x = CENTER_X;
+        node.y = CENTER_Y - node.depth * VERTICAL_GAP;
       });
-      children.forEach((node) => {
-        node.x = CENTER_X + node.depth * HORIZONTAL_GAP;
-        node.y = CENTER_Y;
+      next.forEach((node) => {
+        node.x = CENTER_X;
+        node.y = CENTER_Y + node.depth * VERTICAL_GAP;
       });
-      this.layoutHierarchy(previous, -1, true);
-      this.layoutHierarchy(next, 1, true);
       this.layoutSequenceChildren(sequenceChildren, nodes, true);
-      this.layoutRow(siblings, CENTER_Y, CENTER_X + HORIZONTAL_GAP * 2, true);
-      this.layoutRow(related, CENTER_Y, CENTER_X + HORIZONTAL_GAP * 3, true);
+      this.layoutRow(siblings, CENTER_Y + VERTICAL_GAP, CENTER_X, true);
+      this.layoutRow(related, CENTER_Y + VERTICAL_GAP * 2, CENTER_X, true);
     } else {
       // Vertical: parents up, children down, prev/next horizontal
       previous.forEach((node) => {
@@ -238,9 +238,11 @@ export class GraphSwitcher extends Modal {
       if (!parent) continue;
       const children = nodes.filter((node) => node.sourcePath === sourcePath);
       if (horizontal) {
-        this.layoutRow(children, parent.y, CENTER_X + HORIZONTAL_GAP, true);
+        // Horizontal: sequence children go to the right of their parent
+        this.layoutRow(children, parent.y, parent.x + HORIZONTAL_GAP, true);
       } else {
-        this.layoutRow(children, CENTER_Y + VERTICAL_GAP, parent.x, false);
+        // Vertical: sequence children go below their parent
+        this.layoutRow(children, parent.y + VERTICAL_GAP, parent.x, false);
       }
     }
   }
@@ -250,8 +252,10 @@ export class GraphSwitcher extends Modal {
     for (const depth of depths) {
       const row = nodes.filter((node) => node.depth === depth);
       if (horizontal) {
-        this.layoutRow(row, CENTER_Y + direction * depth * VERTICAL_GAP, CENTER_X, true);
+        // Horizontal mode: hierarchy goes left/right, spread nodes vertically
+        this.layoutRow(row, CENTER_Y, CENTER_X + direction * depth * HORIZONTAL_GAP, true);
       } else {
+        // Vertical mode: hierarchy goes up/down, spread nodes horizontally
         this.layoutRow(row, CENTER_Y + direction * depth * VERTICAL_GAP, CENTER_X, false);
       }
     }
