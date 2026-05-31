@@ -40,3 +40,22 @@
 .bread-trail-node-name:hover {
   color: var(--text-accent);
 }
+
+/* ── Drag and drop ─────────────────────────────────────────── */
+.bread-trail-dragging {
+  opacity: 0.4;
+}
+
+.bread-trail-drop-target {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 4px;
+}
+
+.bread-trail-node[draggable="true"] {
+  cursor: grab;
+}
+
+.bread-trail-node[draggable="true"]:active {
+  cursor: grabbing;
+}
