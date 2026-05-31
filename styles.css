@@ -106,6 +106,7 @@
 }
 
 .bread-trail-graph-stage {
+  --node-max-width: 260px;
   position: relative;
   width: 1400px;
   max-width: 100%;
@@ -146,7 +147,6 @@
 }
 
 .bread-trail-graph-node {
-  --node-max-width: 260px;
   position: absolute;
   display: flex;
   align-items: center;
