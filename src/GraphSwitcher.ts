@@ -25,6 +25,9 @@ export class GraphSwitcher extends Modal {
   private nodeElements = new Map<string, HTMLElement>();
   private selectedPath: string;
   private stageEl?: HTMLElement;
+  private edgeLayerEl?: SVGSVGElement;
+  private confirmed = false;
+  private initialFile: TFile;
 
   constructor(
     app: App,
@@ -34,6 +37,7 @@ export class GraphSwitcher extends Modal {
   ) {
     super(app);
     this.selectedPath = rootFile.path;
+    this.initialFile = rootFile;
     this.registerDirectionalHotkeys();
   }
 
@@ -41,22 +45,48 @@ export class GraphSwitcher extends Modal {
     this.titleEl.setText('Breadcrumb graph switcher');
     this.contentEl.addClass('bread-trail-graph-modal');
     this.contentEl.createEl('p', {
-      text: 'Use the arrow keys or wasd to select a note. Press enter to open it.',
+      text: 'Arrow keys or WASD to navigate. Enter to explore selected note. Enter again to open it.',
       cls: 'mod-muted bread-trail-graph-help',
     });
 
-    this.nodes = this.buildNodes();
-    const stageEl = this.contentEl.createDiv('bread-trail-graph-stage');
-    this.stageEl = stageEl;
-    const edgeLayer = stageEl.createSvg('svg', { cls: 'bread-trail-graph-edges' });
-    this.renderEdges(edgeLayer);
-    this.renderNodes(stageEl);
-    this.renderLegend();
+    this.render();
 
     // Center on the current node after DOM renders
     requestAnimationFrame(() => {
       this.centerSelectedNode();
     });
+  }
+
+  onClose() {
+    // If user escaped without confirming, return to initial file
+    if (!this.confirmed) {
+      const current = this.app.workspace.getActiveFile();
+      if (current?.path !== this.initialFile.path) {
+        void this.app.workspace.getLeaf('tab').openFile(this.initialFile);
+      }
+    }
+  }
+
+  private render() {
+    if (!this.stageEl) {
+      const stageEl = this.contentEl.createDiv('bread-trail-graph-stage');
+      this.stageEl = stageEl;
+      this.edgeLayerEl = stageEl.createSvg('svg', { cls: 'bread-trail-graph-edges' });
+    }
+
+    this.nodes = this.buildNodes();
+
+    // Clear and re-render
+    this.edgeLayerEl!.empty();
+    this.stageEl!.querySelectorAll('.bread-trail-graph-node').forEach((el) => el.remove());
+    this.nodeElements.clear();
+
+    this.renderEdges(this.edgeLayerEl!);
+    this.renderNodes(this.stageEl!);
+
+    if (!this.contentEl.querySelector('.bread-trail-graph-legend')) {
+      this.renderLegend();
+    }
   }
 
   private buildNodes(): GraphNode[] {
@@ -235,7 +265,12 @@ export class GraphSwitcher extends Modal {
         nodeEl.createSpan({ text: String(node.depth), cls: 'bread-trail-graph-node-depth' });
       }
       nodeEl.addEventListener('click', () => {
-        this.selectNode(node.file.path);
+        if (this.selectedPath === node.file.path) {
+          // Double-click behavior: trigger enter
+          void this.handleEnter();
+        } else {
+          this.selectNode(node.file.path);
+        }
       });
       this.nodeElements.set(node.file.path, nodeEl);
     }
@@ -307,7 +342,7 @@ export class GraphSwitcher extends Modal {
     this.scope.register([], 's', () => this.moveSelection('down'));
     this.scope.register([], 'a', () => this.moveSelection('left'));
     this.scope.register([], 'd', () => this.moveSelection('right'));
-    this.scope.register([], 'Enter', () => this.openSelected());
+    this.scope.register([], 'Enter', () => this.handleEnter());
   }
 
   private moveSelection(direction: 'up' | 'down' | 'left' | 'right'): false {
@@ -329,9 +364,22 @@ export class GraphSwitcher extends Modal {
     this.centerSelectedNode();
   }
 
-  private openSelected(): false {
+  private handleEnter(): false {
     const selected = this.nodes.find((node) => node.file.path === this.selectedPath);
     if (!selected) return false;
+
+    // First press: re-center graph around selected node
+    if (selected.file.path !== this.rootFile.path) {
+      this.rootFile = selected.file;
+      this.render();
+      requestAnimationFrame(() => {
+        this.centerSelectedNode();
+      });
+      return false;
+    }
+
+    // Second press (or current node already centered): open and close
+    this.confirmed = true;
     this.close();
     void this.app.workspace.getLeaf('tab').openFile(selected.file);
     return false;
