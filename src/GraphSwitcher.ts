@@ -52,6 +52,11 @@ export class GraphSwitcher extends Modal {
     this.renderEdges(edgeLayer);
     this.renderNodes(stageEl);
     this.renderLegend();
+
+    // Center on the current node after DOM renders
+    requestAnimationFrame(() => {
+      this.centerSelectedNode();
+    });
   }
 
   private buildNodes(): GraphNode[] {
