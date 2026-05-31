@@ -30,6 +30,13 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     this.rootFile = file;
     this.bc = bc;
     this.setPlaceholder(includeVaultFiles ? 'Search notes with breadcrumb context...' : 'Search previous, next, parents, children, and related notes...');
+    this.setInstructions([
+      { command: 'Cmd ↑', purpose: 'open nearest parent' },
+      { command: 'Cmd ↓', purpose: 'open nearest child' },
+      { command: 'Cmd ←', purpose: 'open previous' },
+      { command: 'Cmd →', purpose: 'open next' },
+    ]);
+    this.registerDirectionalHotkeys();
     this.buildItems();
   }
 
@@ -167,6 +174,16 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     return this.items;
   }
 
+  getSuggestions(query: string): FuzzyMatch<BCItem>[] {
+    return super.getSuggestions(query)
+      .map((match, fuzzyRank) => ({
+        match,
+        weightedRank: fuzzyRank + this.getDistancePenalty(match.item),
+      }))
+      .sort((left, right) => left.weightedRank - right.weightedRank)
+      .map(({ match }) => match);
+  }
+
   getItemText(item: BCItem): string {
     return item.file.basename;
   }
@@ -220,5 +237,28 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     if (relation === 'sibling') return 'minus';
     if (relation === 'vault') return 'file';
     return 'link';
+  }
+
+  private getDistancePenalty(item: BCItem): number {
+    if (item.relation === 'parent' || item.relation === 'child' || item.relation === 'previous' || item.relation === 'next') {
+      return Math.max(0, item.depth - 1) * 4;
+    }
+    return 0;
+  }
+
+  private registerDirectionalHotkeys() {
+    this.scope.register(['Mod'], 'ArrowUp', () => this.openNearest('parent'));
+    this.scope.register(['Mod'], 'ArrowDown', () => this.openNearest('child'));
+    this.scope.register(['Mod'], 'ArrowLeft', () => this.openNearest('previous'));
+    this.scope.register(['Mod'], 'ArrowRight', () => this.openNearest('next'));
+  }
+
+  private openNearest(relation: 'parent' | 'child' | 'previous' | 'next'): false {
+    const item = this.getNeighbors(this.rootFile).find((neighbor) => neighbor.relation === relation);
+    if (!item) return false;
+
+    this.close();
+    void this.app.workspace.getLeaf('tab').openFile(item.file);
+    return false;
   }
 }
