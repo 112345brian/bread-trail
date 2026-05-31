@@ -6,6 +6,8 @@ interface BCItem {
   relation: Relation;
   edgeType: string;
   depth: number;
+  sequencePosition?: number;
+  sequenceLength?: number;
 }
 
 type Relation = 'parent' | 'child' | 'previous' | 'next' | 'sibling' | 'related';
@@ -29,7 +31,11 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     const directNeighbors = this.getNeighbors(this.rootFile);
     const parents = directNeighbors.filter((item) => item.relation === 'parent');
 
-    const previous = this.getSequence('previous').reverse();
+    const previous = this.getSequence('previous');
+    const next = this.getSequence('next');
+    this.addSequencePositions(previous, next);
+
+    previous.reverse();
     for (const item of previous) {
       this.addItem(item, seen);
     }
@@ -37,7 +43,7 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     this.addHierarchy('parent', seen);
     this.addHierarchy('child', seen);
 
-    for (const item of this.getSequence('next')) {
+    for (const item of next) {
       this.addItem(item, seen);
     }
 
@@ -53,6 +59,21 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
           this.addItem({ ...item, relation: 'sibling' }, seen);
         }
       }
+    }
+  }
+
+  private addSequencePositions(previous: BCItem[], next: BCItem[]) {
+    const sequenceLength = previous.length + 1 + next.length;
+    const rootPosition = previous.length + 1;
+
+    for (const item of previous) {
+      item.sequencePosition = rootPosition - item.depth;
+      item.sequenceLength = sequenceLength;
+    }
+
+    for (const item of next) {
+      item.sequencePosition = rootPosition + item.depth;
+      item.sequenceLength = sequenceLength;
     }
   }
 
@@ -153,8 +174,9 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     nameEl.setText(item.file.basename);
 
     const metaEl = el.createSpan('bread-trail-switcher-meta');
+    const sequenceLabel = item.sequencePosition && item.sequenceLength ? ` · ${item.sequencePosition}/${item.sequenceLength}` : '';
     const depthLabel = item.depth > 1 ? ` · ${item.depth} ${this.getDistanceUnit(item.relation)}` : '';
-    metaEl.setText(`${this.capitalize(item.relation)}${depthLabel} via ${item.edgeType}`);
+    metaEl.setText(`${this.capitalize(item.relation)}${sequenceLabel}${depthLabel} via ${item.edgeType}`);
   }
 
   onChooseItem(item: BCItem, _evt: MouseEvent | KeyboardEvent) {
