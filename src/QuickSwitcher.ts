@@ -3,9 +3,12 @@ import type { BreadcrumbsPlugin } from './main';
 
 interface BCItem {
   file: TFile;
-  relation: 'parent' | 'child' | 'sibling';
+  relation: Relation;
   edgeType: string;
 }
+
+type Relation = 'parent' | 'child' | 'sibling' | 'related';
+type Direction = 'incoming' | 'outgoing';
 
 export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
   private bc: BreadcrumbsPlugin;
@@ -16,52 +19,58 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     super(app);
     this.rootFile = file;
     this.bc = bc;
-    this.setPlaceholder('Search breadcrumb-related notes...');
+    this.setPlaceholder('Search parents, children, siblings, and related notes...');
     this.buildItems();
   }
 
   private buildItems() {
     const seen = new Set<string>();
+    const parents: BCItem[] = [];
 
-    // Parents (incoming edges)
-    const incoming = this.bc.graph.get_incoming_edges(this.rootFile.path).to_array();
-    for (const edge of incoming) {
-      const sourcePath = edge.source_path?.(this.bc.graph) ?? edge.source;
-      if (!sourcePath || seen.has(sourcePath)) continue;
-      const file = this.app.vault.getAbstractFileByPath(sourcePath);
-      if (file instanceof TFile && file.extension === 'md') {
-        this.items.push({ file, relation: 'parent', edgeType: edge.edge_type ?? 'unknown' });
-        seen.add(sourcePath);
+    for (const item of this.getNeighbors(this.rootFile)) {
+      if (seen.has(item.file.path)) continue;
+      this.items.push(item);
+      seen.add(item.file.path);
+      if (item.relation === 'parent') {
+        parents.push(item);
       }
     }
 
-    // Children (outgoing edges)
-    const outgoing = this.bc.graph.get_outgoing_edges(this.rootFile.path).to_array();
-    for (const edge of outgoing) {
-      const targetPath = edge.target_path?.(this.bc.graph) ?? edge.target;
-      if (!targetPath || seen.has(targetPath)) continue;
-      const file = this.app.vault.getAbstractFileByPath(targetPath);
-      if (file instanceof TFile && file.extension === 'md') {
-        this.items.push({ file, relation: 'child', edgeType: edge.edge_type ?? 'unknown' });
-        seen.add(targetPath);
+    for (const parent of parents) {
+      for (const item of this.getNeighbors(parent.file)) {
+        if (item.relation !== 'child' || item.file.path === this.rootFile.path || seen.has(item.file.path)) continue;
+        this.items.push({ ...item, relation: 'sibling' });
+        seen.add(item.file.path);
       }
     }
+  }
 
-    // Siblings (same parent)
-    for (const edge of incoming) {
-      const parentPath = edge.source_path?.(this.bc.graph) ?? edge.source;
-      if (!parentPath) continue;
-      const parentOutgoing = this.bc.graph.get_outgoing_edges(parentPath).to_array();
-      for (const siblingEdge of parentOutgoing) {
-        const siblingPath = siblingEdge.target_path?.(this.bc.graph) ?? siblingEdge.target;
-        if (!siblingPath || siblingPath === this.rootFile.path || seen.has(siblingPath)) continue;
-        const file = this.app.vault.getAbstractFileByPath(siblingPath);
-        if (file instanceof TFile && file.extension === 'md') {
-          this.items.push({ file, relation: 'sibling', edgeType: siblingEdge.edge_type ?? 'unknown' });
-          seen.add(siblingPath);
-        }
-      }
-    }
+  private getNeighbors(file: TFile): BCItem[] {
+    const incoming = this.bc.graph.get_incoming_edges(file.path).to_array();
+    const outgoing = this.bc.graph.get_outgoing_edges(file.path).to_array();
+
+    return [
+      ...incoming.map((edge) => this.toItem(edge.source_path?.(this.bc.graph) ?? edge.source, edge.edge_type, 'incoming')),
+      ...outgoing.map((edge) => this.toItem(edge.target_path?.(this.bc.graph) ?? edge.target, edge.edge_type, 'outgoing')),
+    ].filter((item): item is BCItem => item !== null);
+  }
+
+  private toItem(path: string | undefined, edgeType: string | undefined, direction: Direction): BCItem | null {
+    if (!path) return null;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile) || file.extension !== 'md') return null;
+
+    return {
+      file,
+      relation: this.getRelation(edgeType, direction),
+      edgeType: edgeType ?? 'unknown edge',
+    };
+  }
+
+  private getRelation(edgeType: string | undefined, direction: Direction): Relation {
+    if (edgeType === 'up') return direction === 'outgoing' ? 'parent' : 'child';
+    if (edgeType === 'down') return direction === 'outgoing' ? 'child' : 'parent';
+    return 'related';
   }
 
   getItems(): BCItem[] {
@@ -79,17 +88,21 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     const item = match.item;
 
     const iconEl = el.createSpan('bread-trail-switcher-icon');
-    const icon = item.relation === 'parent' ? 'arrow-up' : item.relation === 'child' ? 'arrow-down' : 'minus';
+    const icon = item.relation === 'parent' ? 'arrow-up' : item.relation === 'child' ? 'arrow-down' : 'link';
     setIcon(iconEl, icon);
 
     const nameEl = el.createSpan('bread-trail-switcher-name');
     nameEl.setText(item.file.basename);
 
     const metaEl = el.createSpan('bread-trail-switcher-meta');
-    metaEl.setText(`${item.relation} · ${item.edgeType}`);
+    metaEl.setText(`${this.capitalize(item.relation)} via ${item.edgeType}`);
   }
 
   onChooseItem(item: BCItem, _evt: MouseEvent | KeyboardEvent) {
     void this.app.workspace.getLeaf('tab').openFile(item.file);
+  }
+
+  private capitalize(text: string): string {
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }
 }
