@@ -24,6 +24,7 @@ export class GraphSwitcher extends Modal {
   private nodes: GraphNode[] = [];
   private nodeElements = new Map<string, HTMLElement>();
   private selectedPath: string;
+  private stageEl?: HTMLElement;
 
   constructor(
     app: App,
@@ -46,6 +47,7 @@ export class GraphSwitcher extends Modal {
 
     this.nodes = this.buildNodes();
     const stageEl = this.contentEl.createDiv('bread-trail-graph-stage');
+    this.stageEl = stageEl;
     const edgeLayer = stageEl.createSvg('svg', { cls: 'bread-trail-graph-edges' });
     this.renderEdges(edgeLayer);
     this.renderNodes(stageEl);
@@ -314,6 +316,7 @@ export class GraphSwitcher extends Modal {
     this.nodeElements.get(this.selectedPath)?.removeClass('is-selected');
     this.selectedPath = path;
     this.nodeElements.get(path)?.addClass('is-selected');
+    this.centerSelectedNode();
   }
 
   private openSelected(): false {
@@ -335,6 +338,14 @@ export class GraphSwitcher extends Modal {
     const x = Math.abs(candidate.x - current.x);
     const y = Math.abs(candidate.y - current.y);
     return direction === 'up' || direction === 'down' ? y + x * 2 : x + y * 2;
+  }
+
+  private centerSelectedNode() {
+    const selected = this.nodes.find((node) => node.file.path === this.selectedPath);
+    if (!selected || !this.stageEl) return;
+
+    this.stageEl.style.setProperty('--bread-trail-graph-pan-x', `${CENTER_X - selected.x}px`);
+    this.stageEl.style.setProperty('--bread-trail-graph-pan-y', `${CENTER_Y - selected.y}px`);
   }
 
   private capitalize(text: string): string {
