@@ -9,6 +9,7 @@ export interface BreadTrailSettings {
   graphLabelProperty: string;
   showGraphSiblings: boolean;
   showSequenceChildren: boolean;
+  graphSingleClickOpens: boolean;
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
@@ -21,6 +22,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   graphLabelProperty: 'aliases',
   showGraphSiblings: false,
   showSequenceChildren: true,
+  graphSingleClickOpens: false,
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -36,6 +38,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     graphLabelProperty: typeof settings.graphLabelProperty === 'string' ? settings.graphLabelProperty.trim() : DEFAULT_SETTINGS.graphLabelProperty,
     showGraphSiblings: typeof settings.showGraphSiblings === 'boolean' ? settings.showGraphSiblings : DEFAULT_SETTINGS.showGraphSiblings,
     showSequenceChildren: typeof settings.showSequenceChildren === 'boolean' ? settings.showSequenceChildren : DEFAULT_SETTINGS.showSequenceChildren,
+    graphSingleClickOpens: typeof settings.graphSingleClickOpens === 'boolean' ? settings.graphSingleClickOpens : DEFAULT_SETTINGS.graphSingleClickOpens,
   };
 }
 
@@ -91,6 +94,19 @@ class BreadTrailSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.showSequenceChildren);
         toggle.onChange(async (value) => {
           this.plugin.settings.showSequenceChildren = value;
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Single click opens note in graph')
+      .setDesc('When enabled, clicking a node immediately opens it. When disabled (default), first click selects, second click opens.')
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.graphSingleClickOpens);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.graphSingleClickOpens = value;
           await this.plugin.saveSettings().catch((err) => {
             console.error('Failed to save Bread Trail settings:', err);
           });
