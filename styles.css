@@ -146,13 +146,14 @@
 }
 
 .bread-trail-graph-node {
+  --node-max-width: 260px;
   position: absolute;
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 110px;
   width: max-content;
-  max-width: 260px;
+  max-width: var(--node-max-width);
   height: auto;
   min-height: 34px;
   padding: 7px 10px;

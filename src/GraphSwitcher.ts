@@ -236,12 +236,12 @@ export class GraphSwitcher extends Modal {
     // Sort alphabetically for readability when many nodes
     const sorted = [...nodes].sort((a, b) => a.file.basename.localeCompare(b.file.basename));
 
-    // Dynamic gap based on node count
-    // Nodes are centered with max-width 260px, so minimum center-to-center distance
-    // is 260px + 20px padding = 280px to prevent overlap
-    const NODE_MAX_WIDTH = 260;
-    const NODE_PADDING = 20;
-    const minGap = NODE_MAX_WIDTH + NODE_PADDING;
+    // Get actual node max-width from CSS variable (fallback to 260px)
+    const computedStyle = getComputedStyle(document.documentElement);
+    const nodeMaxWidth = parseInt(computedStyle.getPropertyValue('--node-max-width') || '260', 10);
+
+    // Minimum gap is node width + 8% padding to prevent overlap
+    const minGap = nodeMaxWidth * 1.08;
     const maxTotalWidth = 1400;
     const gap = Math.max(minGap, Math.min(HORIZONTAL_GAP, maxTotalWidth / Math.max(sorted.length - 1, 1)));
 
