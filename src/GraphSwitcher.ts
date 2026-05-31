@@ -446,16 +446,22 @@ export class GraphSwitcher extends Modal {
       if (node.file.path === this.selectedPath) continue;
 
       // Check if this node is connected to the selected node
-      const isConnected = node.sourcePath === this.selectedPath ||
-                         selectedNode.sourcePath === node.file.path;
+      // Node is connected if:
+      // 1. Its edge comes FROM the selected node (node.sourcePath === this.selectedPath)
+      // 2. Its edge goes TO the selected node (selected node's sourcePath === node.file.path)
+      const isOutgoing = node.sourcePath === this.selectedPath;
+      const isIncoming = selectedNode.sourcePath === node.file.path;
 
-      if (isConnected) {
-        const source = nodesByPath.get(node.sourcePath) ?? selectedNode;
+      if (isOutgoing || isIncoming) {
+        const source = nodesByPath.get(node.sourcePath);
+        const target = node;
+        if (!source) continue;
+
         const line = this.edgeLayerEl.createSvg('line');
         line.setAttribute('x1', String(source.x));
         line.setAttribute('y1', String(source.y));
-        line.setAttribute('x2', String(node.x));
-        line.setAttribute('y2', String(node.y));
+        line.setAttribute('x2', String(target.x));
+        line.setAttribute('y2', String(target.y));
         line.addClass(`bread-trail-graph-edge-${node.relation}`);
       }
     }
