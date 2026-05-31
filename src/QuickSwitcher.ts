@@ -8,7 +8,7 @@ interface BCItem {
   depth: number;
 }
 
-type Relation = 'parent' | 'child' | 'sibling' | 'related';
+type Relation = 'parent' | 'child' | 'previous' | 'next' | 'sibling' | 'related';
 type Direction = 'incoming' | 'outgoing';
 
 export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
@@ -20,7 +20,7 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     super(app);
     this.rootFile = file;
     this.bc = bc;
-    this.setPlaceholder('Search parents, children, siblings, and related notes...');
+    this.setPlaceholder('Search previous, next, parents, children, and related notes...');
     this.buildItems();
   }
 
@@ -29,8 +29,17 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     const directNeighbors = this.getNeighbors(this.rootFile);
     const parents = directNeighbors.filter((item) => item.relation === 'parent');
 
+    const previous = this.getSequence('previous').reverse();
+    for (const item of previous) {
+      this.addItem(item, seen);
+    }
+
     this.addHierarchy('parent', seen);
     this.addHierarchy('child', seen);
+
+    for (const item of this.getSequence('next')) {
+      this.addItem(item, seen);
+    }
 
     for (const item of directNeighbors) {
       if (item.relation === 'related') {
@@ -44,6 +53,22 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
           this.addItem({ ...item, relation: 'sibling' }, seen);
         }
       }
+    }
+  }
+
+  private getSequence(relation: 'previous' | 'next'): BCItem[] {
+    const items: BCItem[] = [];
+    const visited = new Set<string>([this.rootFile.path]);
+    let current = this.rootFile;
+    let depth = 0;
+
+    while (true) {
+      const item = this.getNeighbors(current).find((neighbor) => neighbor.relation === relation);
+      if (!item || visited.has(item.file.path)) return items;
+      depth += 1;
+      visited.add(item.file.path);
+      items.push({ ...item, depth });
+      current = item.file;
     }
   }
 
@@ -92,8 +117,11 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
   }
 
   private getRelation(edgeType: string | undefined, direction: Direction): Relation {
-    if (edgeType === 'up') return direction === 'outgoing' ? 'parent' : 'child';
-    if (edgeType === 'down') return direction === 'outgoing' ? 'child' : 'parent';
+    const type = edgeType?.toLowerCase();
+    if (type === 'up') return direction === 'outgoing' ? 'parent' : 'child';
+    if (type === 'down') return direction === 'outgoing' ? 'child' : 'parent';
+    if (type === 'next') return direction === 'outgoing' ? 'next' : 'previous';
+    if (type === 'prev') return direction === 'outgoing' ? 'previous' : 'next';
     return 'related';
   }
 
@@ -112,8 +140,8 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     const item = match.item;
 
     const iconEl = el.createSpan('bread-trail-switcher-icons');
-    if (item.relation === 'parent' || item.relation === 'child') {
-      const icon = item.relation === 'parent' ? 'arrow-up' : 'arrow-down';
+    if (item.relation === 'parent' || item.relation === 'child' || item.relation === 'previous' || item.relation === 'next') {
+      const icon = this.getDirectionalIcon(item.relation);
       for (let index = 0; index < item.depth; index++) {
         setIcon(iconEl.createSpan('bread-trail-switcher-icon'), icon);
       }
@@ -125,7 +153,7 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     nameEl.setText(item.file.basename);
 
     const metaEl = el.createSpan('bread-trail-switcher-meta');
-    const depthLabel = item.depth > 1 ? ` · ${item.depth} levels` : '';
+    const depthLabel = item.depth > 1 ? ` · ${item.depth} ${this.getDistanceUnit(item.relation)}` : '';
     metaEl.setText(`${this.capitalize(item.relation)}${depthLabel} via ${item.edgeType}`);
   }
 
@@ -135,5 +163,16 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
 
   private capitalize(text: string): string {
     return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  private getDirectionalIcon(relation: 'parent' | 'child' | 'previous' | 'next'): string {
+    if (relation === 'parent') return 'arrow-up';
+    if (relation === 'child') return 'arrow-down';
+    if (relation === 'previous') return 'arrow-left';
+    return 'arrow-right';
+  }
+
+  private getDistanceUnit(relation: Relation): string {
+    return relation === 'previous' || relation === 'next' ? 'positions' : 'levels';
   }
 }
