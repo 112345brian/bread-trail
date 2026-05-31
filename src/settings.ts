@@ -61,22 +61,26 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .setName('Graph label property')
       .setDesc('Frontmatter property used for graph node labels. Uses the first value when the property is a list. Leave blank to use filenames.')
       .addText((text) => {
-        text.setPlaceholder('Aliases');
+        text.setPlaceholder('aliases');
         text.setValue(this.plugin.settings.graphLabelProperty);
         text.onChange(async (value) => {
           this.plugin.settings.graphLabelProperty = value.trim();
-          await this.plugin.saveSettings();
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
         });
       });
 
     new Setting(containerEl)
       .setName('Show siblings in graph')
-      .setDesc('Include other children of the active note’s direct parents. Sibling links are inferred from the shared parent.')
+      .setDesc('Include other children of the active note direct parents. Sibling links are inferred from the shared parent.')
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.showGraphSiblings);
         toggle.onChange(async (value) => {
           this.plugin.settings.showGraphSiblings = value;
-          await this.plugin.saveSettings();
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
         });
       });
 
@@ -87,7 +91,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.showSequenceChildren);
         toggle.onChange(async (value) => {
           this.plugin.settings.showSequenceChildren = value;
-          await this.plugin.saveSettings();
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
         });
       });
   }
@@ -104,7 +110,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
         text.onChange(async (value) => {
           const parsed = Number.parseInt(value, 10);
           this.plugin.settings[key] = Number.isNaN(parsed) ? DEFAULT_SETTINGS[key] : Math.max(0, parsed);
-          await this.plugin.saveSettings();
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
         });
       });
   }

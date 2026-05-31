@@ -187,8 +187,13 @@ export class GraphSwitcher extends Modal {
   }
 
   private layoutRow(nodes: GraphNode[], y: number, centerX: number) {
+    if (nodes.length === 0) return;
+
+    // Dynamic gap to prevent overflow — max 1200px total width
+    const gap = Math.min(HORIZONTAL_GAP, 1200 / Math.max(nodes.length - 1, 1));
+
     nodes.forEach((node, index) => {
-      node.x = centerX + (index - (nodes.length - 1) / 2) * HORIZONTAL_GAP;
+      node.x = centerX + (index - (nodes.length - 1) / 2) * gap;
       node.y = y;
     });
   }
@@ -261,7 +266,7 @@ export class GraphSwitcher extends Modal {
     return {
       file,
       relation: this.getRelation(edgeType, direction),
-      edgeType: edgeType ?? 'unknown edge',
+      edgeType: edgeType ?? 'unknown',
       depth: 1,
       sourcePath: this.rootFile.path,
       x: 0,
