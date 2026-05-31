@@ -201,10 +201,9 @@ export class GraphSwitcher extends Modal {
     const sequenceChildren = nodes.filter((node) => node.relation === 'sequence-child');
     const related = nodes.filter((node) => node.relation === 'related');
 
-    // Get actual node max-width from CSS variable for proper spacing
-    const computedStyle = this.stageEl ? getComputedStyle(this.stageEl) : getComputedStyle(document.documentElement);
-    const nodeMaxWidth = parseInt(computedStyle.getPropertyValue('--node-max-width') || '260', 10);
-    const minSequenceGap = nodeMaxWidth * 1.08;
+    // Viewport-relative spacing: ~20% of stage width for sequence gaps
+    const stageWidth = this.stageEl ? this.stageEl.getBoundingClientRect().width : 1400;
+    const sequenceGap = stageWidth * 0.2;
 
     if (this.horizontalOrientation) {
       // Horizontal: parents left, children right, prev/next vertical
@@ -224,11 +223,11 @@ export class GraphSwitcher extends Modal {
     } else {
       // Vertical: parents up, children down, prev/next horizontal
       previous.forEach((node) => {
-        node.x = CENTER_X - node.depth * minSequenceGap;
+        node.x = CENTER_X - node.depth * sequenceGap;
         node.y = CENTER_Y;
       });
       next.forEach((node) => {
-        node.x = CENTER_X + node.depth * minSequenceGap;
+        node.x = CENTER_X + node.depth * sequenceGap;
         node.y = CENTER_Y;
       });
       this.layoutHierarchy(parents, -1, false);
@@ -291,14 +290,17 @@ export class GraphSwitcher extends Modal {
       sorted = [...nodes].sort((a, b) => a.file.basename.localeCompare(b.file.basename));
     }
 
-    // Get actual node max-width from CSS variable (fallback to 260px)
+    // Use viewport-relative spacing: aim for 20% of stage width per node
+    const stageWidth = this.stageEl ? this.stageEl.getBoundingClientRect().width : 1400;
+    const idealGap = stageWidth * 0.2;
+
+    // Get actual node max-width from CSS for minimum safe gap
     const computedStyle = this.stageEl ? getComputedStyle(this.stageEl) : getComputedStyle(document.documentElement);
     const nodeMaxWidth = parseInt(computedStyle.getPropertyValue('--node-max-width') || '260', 10);
-
-    // Minimum gap is node width + 8% padding to prevent overlap
     const minGap = nodeMaxWidth * 1.08;
-    const maxTotalWidth = 1400;
-    const gap = Math.max(minGap, Math.min(HORIZONTAL_GAP, maxTotalWidth / Math.max(sorted.length - 1, 1)));
+
+    // Use ideal gap but never go below minimum safe gap
+    const gap = Math.max(minGap, idealGap);
 
     if (horizontal) {
       // Horizontal orientation: stack vertically (vary Y)
