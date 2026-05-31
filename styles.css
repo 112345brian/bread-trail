@@ -93,12 +93,13 @@
 
 /* ── Graph switcher ────────────────────────────────────────── */
 .bread-trail-graph-modal {
-  overflow: auto;
+  overflow: hidden;
 }
 
 .modal:has(.bread-trail-graph-modal) {
   width: min(94vw, 1480px);
   max-width: none;
+  overflow: hidden;
 }
 
 .bread-trail-graph-help {
