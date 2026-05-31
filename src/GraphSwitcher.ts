@@ -346,7 +346,11 @@ export class GraphSwitcher extends Modal {
       setIcon(nodeEl.createSpan('bread-trail-graph-node-icon'), this.getIcon(node.relation));
       nodeEl.createSpan({ text: label, cls: 'bread-trail-graph-node-label' });
       if (node.depth > 1) {
-        nodeEl.createSpan({ text: String(node.depth), cls: 'bread-trail-graph-node-depth' });
+        const depthEl = nodeEl.createSpan({ text: String(node.depth), cls: 'bread-trail-graph-node-depth' });
+        // Use superscript for sequence nodes (prev/next)
+        if (node.relation === 'previous' || node.relation === 'next') {
+          depthEl.addClass('bread-trail-graph-node-sequence-number');
+        }
       }
       nodeEl.addEventListener('click', () => {
         if (this.settings.graphSingleClickOpens) {

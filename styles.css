@@ -180,6 +180,12 @@
   font-weight: 600;
 }
 
+.bread-trail-graph-node-previous,
+.bread-trail-graph-node-next {
+  background: color-mix(in srgb, var(--background-primary) 85%, var(--color-blue));
+  border-color: color-mix(in srgb, var(--background-modifier-border) 70%, var(--color-blue));
+}
+
 .bread-trail-graph-node.is-selected {
   border-color: var(--interactive-accent);
   background: var(--interactive-accent);
@@ -211,6 +217,18 @@
   background: var(--background-modifier-hover);
   color: var(--text-muted);
   font-size: 0.75em;
+}
+
+.bread-trail-graph-node-sequence-number {
+  position: relative;
+  top: -0.3em;
+  min-width: auto;
+  height: auto;
+  padding: 0 3px;
+  background: transparent;
+  font-size: 0.65em;
+  font-weight: 600;
+  color: var(--color-blue);
 }
 
 .bread-trail-graph-legend {
