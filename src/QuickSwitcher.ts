@@ -10,7 +10,7 @@ interface BCItem {
   sequenceLength?: number;
 }
 
-type Relation = 'parent' | 'child' | 'previous' | 'next' | 'sibling' | 'related';
+type Relation = 'parent' | 'child' | 'previous' | 'next' | 'sibling' | 'related' | 'vault';
 type Direction = 'incoming' | 'outgoing';
 
 export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
@@ -18,11 +18,11 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
   private rootFile: TFile;
   private items: BCItem[] = [];
 
-  constructor(app: App, file: TFile, bc: BreadcrumbsPlugin) {
+  constructor(app: App, file: TFile, bc: BreadcrumbsPlugin, private includeVaultFiles = false) {
     super(app);
     this.rootFile = file;
     this.bc = bc;
-    this.setPlaceholder('Search previous, next, parents, children, and related notes...');
+    this.setPlaceholder(includeVaultFiles ? 'Search notes with breadcrumb context...' : 'Search previous, next, parents, children, and related notes...');
     this.buildItems();
   }
 
@@ -40,12 +40,12 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
       this.addItem(item, seen);
     }
 
-    this.addHierarchy('parent', seen);
-    this.addHierarchy('child', seen);
-
     for (const item of next) {
       this.addItem(item, seen);
     }
+
+    this.addHierarchy('parent', seen);
+    this.addHierarchy('child', seen);
 
     for (const item of directNeighbors) {
       if (item.relation === 'related') {
@@ -58,6 +58,12 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
         if (item.relation === 'child') {
           this.addItem({ ...item, relation: 'sibling' }, seen);
         }
+      }
+    }
+
+    if (this.includeVaultFiles) {
+      for (const file of this.app.vault.getMarkdownFiles()) {
+        this.addItem({ file, relation: 'vault', edgeType: '', depth: 0 }, seen);
       }
     }
   }
@@ -167,7 +173,7 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
         setIcon(iconEl.createSpan('bread-trail-switcher-icon'), icon);
       }
     } else {
-      setIcon(iconEl.createSpan('bread-trail-switcher-icon'), item.relation === 'sibling' ? 'minus' : 'link');
+      setIcon(iconEl.createSpan('bread-trail-switcher-icon'), this.getContextIcon(item.relation));
     }
 
     const nameEl = el.createSpan('bread-trail-switcher-name');
@@ -176,7 +182,8 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     const metaEl = el.createSpan('bread-trail-switcher-meta');
     const sequenceLabel = item.sequencePosition && item.sequenceLength ? ` · ${item.sequencePosition}/${item.sequenceLength}` : '';
     const depthLabel = item.depth > 1 ? ` · ${item.depth} ${this.getDistanceUnit(item.relation)}` : '';
-    metaEl.setText(`${this.capitalize(item.relation)}${sequenceLabel}${depthLabel} via ${item.edgeType}`);
+    const edgeLabel = item.edgeType ? ` via ${item.edgeType}` : '';
+    metaEl.setText(`${this.capitalize(item.relation)}${sequenceLabel}${depthLabel}${edgeLabel}`);
   }
 
   onChooseItem(item: BCItem, _evt: MouseEvent | KeyboardEvent) {
@@ -196,5 +203,11 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
 
   private getDistanceUnit(relation: Relation): string {
     return relation === 'previous' || relation === 'next' ? 'positions' : 'levels';
+  }
+
+  private getContextIcon(relation: Relation): string {
+    if (relation === 'sibling') return 'minus';
+    if (relation === 'vault') return 'file';
+    return 'link';
   }
 }

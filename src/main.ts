@@ -201,5 +201,23 @@ export default class BreadTrail extends Plugin {
         return true;
       },
     });
+
+    this.addCommand({
+      id: 'quick-switch-all-notes',
+      name: 'Quick switch notes with breadcrumb context',
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (checking) return !!file && file.extension === 'md';
+        if (!file) return false;
+
+        if (!this.bc) {
+          new BreadcrumbsMissingModal(this.app).open();
+          return true;
+        }
+
+        new BreadcrumbQuickSwitcher(this.app, file, this.bc, true).open();
+        return true;
+      },
+    });
   }
 }
