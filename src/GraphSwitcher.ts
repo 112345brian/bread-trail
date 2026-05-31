@@ -72,21 +72,26 @@ export class GraphSwitcher extends Modal {
   }
 
   private render() {
+    let viewport: HTMLElement;
+
     if (!this.stageEl) {
       const stageEl = this.contentEl.createDiv('bread-trail-graph-stage');
       this.stageEl = stageEl;
-      this.edgeLayerEl = stageEl.createSvg('svg', { cls: 'bread-trail-graph-edges' });
+      viewport = stageEl.createDiv('bread-trail-graph-viewport');
+      this.edgeLayerEl = viewport.createSvg('svg', { cls: 'bread-trail-graph-edges' });
+    } else {
+      viewport = this.stageEl.querySelector('.bread-trail-graph-viewport') as HTMLElement;
     }
 
     this.nodes = this.buildNodes();
 
     // Clear and re-render
     this.edgeLayerEl!.empty();
-    this.stageEl!.querySelectorAll('.bread-trail-graph-node').forEach((el) => el.remove());
+    viewport.querySelectorAll('.bread-trail-graph-node').forEach((el) => el.remove());
     this.nodeElements.clear();
 
     this.renderEdges(this.edgeLayerEl!);
-    this.renderNodes(this.stageEl!);
+    this.renderNodes(viewport);
 
     if (!this.contentEl.querySelector('.bread-trail-graph-legend')) {
       this.renderLegend();
@@ -231,10 +236,10 @@ export class GraphSwitcher extends Modal {
     // Sort alphabetically for readability when many nodes
     const sorted = [...nodes].sort((a, b) => a.file.basename.localeCompare(b.file.basename));
 
-    // Dynamic gap based on node count — ensure minimum 140px spacing
-    // For many nodes, reduce gap but never below 140px to prevent overlap
-    const minGap = 140;
-    const maxTotalWidth = 1300;
+    // Dynamic gap based on node count — ensure minimum 180px spacing
+    // For many nodes, reduce gap but never below 180px to prevent overlap
+    const minGap = 180;
+    const maxTotalWidth = 1400;
     const gap = Math.max(minGap, Math.min(HORIZONTAL_GAP, maxTotalWidth / Math.max(sorted.length - 1, 1)));
 
     sorted.forEach((node, index) => {
@@ -434,8 +439,14 @@ export class GraphSwitcher extends Modal {
     const selected = this.nodes.find((node) => node.file.path === this.selectedPath);
     if (!selected || !this.stageEl) return;
 
-    this.stageEl.style.setProperty('--bread-trail-graph-pan-x', `${CENTER_X - selected.x}px`);
-    this.stageEl.style.setProperty('--bread-trail-graph-pan-y', `${CENTER_Y - selected.y}px`);
+    const stageRect = this.stageEl.getBoundingClientRect();
+    const centerX = stageRect.width / 2;
+    const centerY = stageRect.height / 2;
+
+    const viewport = this.stageEl.querySelector('.bread-trail-graph-viewport') as HTMLElement;
+    if (viewport) {
+      viewport.style.transform = `translate(${centerX - selected.x}px, ${centerY - selected.y}px)`;
+    }
   }
 
   private capitalize(text: string): string {
