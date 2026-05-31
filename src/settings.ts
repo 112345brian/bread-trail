@@ -6,13 +6,17 @@ export interface BreadTrailSettings {
   childDepth: number;
   previousDepth: number;
   nextDepth: number;
+  graphLabelProperty: string;
 }
+
+type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
 
 export const DEFAULT_SETTINGS: BreadTrailSettings = {
   parentDepth: 3,
   childDepth: 3,
   previousDepth: 3,
   nextDepth: 3,
+  graphLabelProperty: 'aliases',
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -25,6 +29,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     childDepth: normalizeDepth(settings.childDepth, DEFAULT_SETTINGS.childDepth),
     previousDepth: normalizeDepth(settings.previousDepth, DEFAULT_SETTINGS.previousDepth),
     nextDepth: normalizeDepth(settings.nextDepth, DEFAULT_SETTINGS.nextDepth),
+    graphLabelProperty: typeof settings.graphLabelProperty === 'string' ? settings.graphLabelProperty.trim() : DEFAULT_SETTINGS.graphLabelProperty,
   };
 }
 
@@ -45,9 +50,21 @@ class BreadTrailSettingTab extends PluginSettingTab {
     this.addDepthSetting('Child depth', 'Maximum number of child levels to include.', 'childDepth');
     this.addDepthSetting('Previous depth', 'Maximum number of previous sequence notes to include.', 'previousDepth');
     this.addDepthSetting('Next depth', 'Maximum number of next sequence notes to include.', 'nextDepth');
+
+    new Setting(containerEl)
+      .setName('Graph label property')
+      .setDesc('Frontmatter property used for graph node labels. Uses the first value when the property is a list. Leave blank to use filenames.')
+      .addText((text) => {
+        text.setPlaceholder('Aliases');
+        text.setValue(this.plugin.settings.graphLabelProperty);
+        text.onChange(async (value) => {
+          this.plugin.settings.graphLabelProperty = value.trim();
+          await this.plugin.saveSettings();
+        });
+      });
   }
 
-  private addDepthSetting(name: string, description: string, key: keyof BreadTrailSettings) {
+  private addDepthSetting(name: string, description: string, key: DepthSettingKey) {
     new Setting(this.containerEl)
       .setName(name)
       .setDesc(`${description} Set to 0 to disable.`)
