@@ -269,8 +269,22 @@ export class GraphSwitcher extends Modal {
   private layoutRow(nodes: GraphNode[], y: number, centerX: number, horizontal: boolean) {
     if (nodes.length === 0) return;
 
-    // Sort alphabetically for readability when many nodes
-    const sorted = [...nodes].sort((a, b) => a.file.basename.localeCompare(b.file.basename));
+    let sorted: GraphNode[];
+    if (this.settings.graphNodeSortOrder === 'importance') {
+      // Sort by descendant count (nodes with more descendants toward center)
+      const descendantCounts = new Map<string, number>();
+      for (const node of nodes) {
+        descendantCounts.set(node.file.path, this.countDescendants(node.file));
+      }
+      sorted = [...nodes].sort((a, b) => {
+        const countDiff = (descendantCounts.get(b.file.path) ?? 0) - (descendantCounts.get(a.file.path) ?? 0);
+        // Break ties alphabetically
+        return countDiff !== 0 ? countDiff : a.file.basename.localeCompare(b.file.basename);
+      });
+    } else {
+      // Sort alphabetically for readability when many nodes
+      sorted = [...nodes].sort((a, b) => a.file.basename.localeCompare(b.file.basename));
+    }
 
     // Get actual node max-width from CSS variable (fallback to 260px)
     const computedStyle = this.stageEl ? getComputedStyle(this.stageEl) : getComputedStyle(document.documentElement);
@@ -589,6 +603,29 @@ export class GraphSwitcher extends Modal {
         if (this.stageEl) this.stageEl.style.cursor = '';
       }
     });
+  }
+
+  private countDescendants(file: TFile): number {
+    const visited = new Set<string>();
+    const queue = [file.path];
+    let count = 0;
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+
+      const outgoing = this.bc.graph.get_outgoing_edges(current).to_array();
+      for (const edge of outgoing) {
+        const targetPath = edge.target_path?.(this.bc.graph) ?? edge.target;
+        if (targetPath && !visited.has(targetPath)) {
+          queue.push(targetPath);
+          count++;
+        }
+      }
+    }
+
+    return count;
   }
 
   private capitalize(text: string): string {
