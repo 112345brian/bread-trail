@@ -59,3 +59,30 @@
 .bread-trail-node[draggable="true"]:active {
   cursor: grabbing;
 }
+
+/* ── Quick switcher ────────────────────────────────────────── */
+.bread-trail-switcher-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+}
+
+.bread-trail-switcher-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bread-trail-switcher-name {
+  flex: 1;
+}
+
+.bread-trail-switcher-meta {
+  font-size: 0.8em;
+  color: var(--text-faint);
+}
