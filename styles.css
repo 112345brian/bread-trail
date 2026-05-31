@@ -105,13 +105,18 @@
   margin-top: 0;
 }
 
+.bread-trail-graph-viewport {
+  max-height: 70vh;
+  margin: 12px auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: auto;
+}
+
 .bread-trail-graph-stage {
   position: relative;
   width: 1400px;
   height: 780px;
-  margin: 12px auto;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
   background: var(--background-secondary);
   overflow: hidden;
 }

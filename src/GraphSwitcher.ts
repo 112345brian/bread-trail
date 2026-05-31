@@ -42,11 +42,13 @@ export class GraphSwitcher extends Modal {
     });
 
     this.nodes = this.buildNodes();
-    const stageEl = this.contentEl.createDiv('bread-trail-graph-stage');
+    const viewportEl = this.contentEl.createDiv('bread-trail-graph-viewport');
+    const stageEl = viewportEl.createDiv('bread-trail-graph-stage');
     const edgeLayer = stageEl.createSvg('svg', { cls: 'bread-trail-graph-edges' });
     this.renderEdges(edgeLayer);
     this.renderNodes(stageEl);
     this.renderLegend();
+    window.setTimeout(() => this.centerViewport(viewportEl), 0);
   }
 
   private buildNodes(): GraphNode[] {
@@ -182,9 +184,10 @@ export class GraphSwitcher extends Modal {
       });
       nodeEl.style.left = `${node.x}px`;
       nodeEl.style.top = `${node.y}px`;
-      nodeEl.setAttribute('aria-label', `${this.capitalize(node.relation)}: ${node.file.basename}`);
+      const label = this.getLabel(node.file);
+      nodeEl.setAttribute('aria-label', `${this.capitalize(node.relation)}: ${label}`);
       setIcon(nodeEl.createSpan('bread-trail-graph-node-icon'), this.getIcon(node.relation));
-      nodeEl.createSpan({ text: node.file.basename, cls: 'bread-trail-graph-node-label' });
+      nodeEl.createSpan({ text: label, cls: 'bread-trail-graph-node-label' });
       if (node.depth > 1) {
         nodeEl.createSpan({ text: String(node.depth), cls: 'bread-trail-graph-node-depth' });
       }
@@ -267,5 +270,28 @@ export class GraphSwitcher extends Modal {
 
   private capitalize(text: string): string {
     return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  private centerViewport(viewportEl: HTMLElement) {
+    viewportEl.scrollLeft = CENTER_X - viewportEl.clientWidth / 2;
+    viewportEl.scrollTop = CENTER_Y - viewportEl.clientHeight / 2;
+  }
+
+  private getLabel(file: TFile): string {
+    const property = this.settings.graphLabelProperty;
+    if (!property) return file.basename;
+
+    const cachedFrontmatter: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    const frontmatter = typeof cachedFrontmatter === 'object' && cachedFrontmatter !== null
+      ? cachedFrontmatter as Record<string, unknown>
+      : undefined;
+    const value = frontmatter?.[property];
+    if (Array.isArray(value)) {
+      const first = value.find((item): item is string => typeof item === 'string' && item.trim().length > 0);
+      return first?.trim() ?? file.basename;
+    }
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number') return String(value);
+    return file.basename;
   }
 }
