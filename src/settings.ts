@@ -7,10 +7,12 @@ export interface BreadTrailSettings {
   previousDepth: number;
   nextDepth: number;
   graphLabelProperty: string;
+  graphNodeMetaProperty: string;
   showGraphSiblings: boolean;
   showSequenceChildren: boolean;
   graphSingleClickOpens: boolean;
   graphNodeSortOrder: 'alphabetical' | 'importance';
+  graphShowPreview: boolean;
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
@@ -21,10 +23,12 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   previousDepth: 3,
   nextDepth: 3,
   graphLabelProperty: 'aliases',
+  graphNodeMetaProperty: '',
   showGraphSiblings: false,
   showSequenceChildren: true,
   graphSingleClickOpens: false,
   graphNodeSortOrder: 'alphabetical',
+  graphShowPreview: false,
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -38,10 +42,12 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     previousDepth: normalizeDepth(settings.previousDepth, DEFAULT_SETTINGS.previousDepth),
     nextDepth: normalizeDepth(settings.nextDepth, DEFAULT_SETTINGS.nextDepth),
     graphLabelProperty: typeof settings.graphLabelProperty === 'string' ? settings.graphLabelProperty.trim() : DEFAULT_SETTINGS.graphLabelProperty,
+    graphNodeMetaProperty: typeof settings.graphNodeMetaProperty === 'string' ? settings.graphNodeMetaProperty.trim() : DEFAULT_SETTINGS.graphNodeMetaProperty,
     showGraphSiblings: typeof settings.showGraphSiblings === 'boolean' ? settings.showGraphSiblings : DEFAULT_SETTINGS.showGraphSiblings,
     showSequenceChildren: typeof settings.showSequenceChildren === 'boolean' ? settings.showSequenceChildren : DEFAULT_SETTINGS.showSequenceChildren,
     graphSingleClickOpens: typeof settings.graphSingleClickOpens === 'boolean' ? settings.graphSingleClickOpens : DEFAULT_SETTINGS.graphSingleClickOpens,
     graphNodeSortOrder: settings.graphNodeSortOrder === 'importance' ? 'importance' : 'alphabetical',
+    graphShowPreview: typeof settings.graphShowPreview === 'boolean' ? settings.graphShowPreview : DEFAULT_SETTINGS.graphShowPreview,
   };
 }
 
@@ -64,6 +70,10 @@ class BreadTrailSettingTab extends PluginSettingTab {
     this.addDepthSetting('Next depth', 'Maximum number of next sequence notes to include.', 'nextDepth');
 
     new Setting(containerEl)
+      .setName('Graph view')
+      .setHeading();
+
+    new Setting(containerEl)
       .setName('Graph label property')
       .setDesc('Frontmatter property used for graph node labels. Uses the first value when the property is a list. Leave blank to use filenames.')
       .addText((text) => {
@@ -71,6 +81,33 @@ class BreadTrailSettingTab extends PluginSettingTab {
         text.setValue(this.plugin.settings.graphLabelProperty);
         text.onChange(async (value) => {
           this.plugin.settings.graphLabelProperty = value.trim();
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Graph node metadata property')
+      .setDesc('Frontmatter property to display as a subtitle on each node. Leave blank to show nothing.')
+      .addText((text) => {
+        text.setPlaceholder('E.g. Status, date, author');
+        text.setValue(this.plugin.settings.graphNodeMetaProperty);
+        text.onChange(async (value) => {
+          this.plugin.settings.graphNodeMetaProperty = value.trim();
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Show preview pane in graph')
+      .setDesc('Split the graph view into two columns: graph on the left, a rendered preview of the selected note on the right.')
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.graphShowPreview);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.graphShowPreview = value;
           await this.plugin.saveSettings().catch((err) => {
             console.error('Failed to save Bread Trail settings:', err);
           });

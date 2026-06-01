@@ -1,4 +1,4 @@
-import { App, Modal, TFile, setIcon } from 'obsidian';
+import { App, Component, MarkdownRenderer, Modal, TFile, setIcon } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 
@@ -28,6 +28,9 @@ export class GraphSwitcher extends Modal {
   private selectedPath: string;
   private stageEl?: HTMLElement;
   private edgeLayerEl?: SVGSVGElement;
+  private graphPanelEl?: HTMLElement;
+  private previewEl?: HTMLElement;
+  private previewComponent = new Component();
   private confirmed = false;
   private initialFile: TFile;
   private lastEnterPress = 0;
@@ -59,11 +62,13 @@ export class GraphSwitcher extends Modal {
     this.titleEl.setText('Breadcrumb graph switcher');
     this.contentEl.addClass('bread-trail-graph-modal');
 
-    const controlsRow = this.contentEl.createDiv('bread-trail-graph-controls');
-    controlsRow.createEl('p', {
-      text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • =/−: zoom • Type to filter',
-      cls: 'mod-muted bread-trail-graph-help',
-    });
+    if (this.settings.graphShowPreview) {
+      this.contentEl.addClass('has-preview');
+      this.graphPanelEl = this.contentEl.createDiv('bread-trail-graph-panel');
+      this.previewEl = this.contentEl.createDiv('bread-trail-graph-preview-pane');
+    } else {
+      this.graphPanelEl = this.contentEl.createDiv('bread-trail-graph-panel');
+    }
 
     this.render();
 
@@ -76,6 +81,7 @@ export class GraphSwitcher extends Modal {
   }
 
   onClose() {
+    this.previewComponent.unload();
     // If user escaped without confirming, return to initial file
     if (!this.confirmed) {
       const current = this.app.workspace.getActiveFile();
@@ -87,9 +93,10 @@ export class GraphSwitcher extends Modal {
 
   private render() {
     let viewport: HTMLElement;
+    const panel = this.graphPanelEl!;
 
     if (!this.stageEl) {
-      const stageEl = this.contentEl.createDiv('bread-trail-graph-stage');
+      const stageEl = panel.createDiv('bread-trail-graph-stage');
       this.stageEl = stageEl;
       viewport = stageEl.createDiv('bread-trail-graph-viewport');
       this.edgeLayerEl = viewport.createSvg('svg', { cls: 'bread-trail-graph-edges' });
@@ -108,11 +115,11 @@ export class GraphSwitcher extends Modal {
     this.renderEdges(this.edgeLayerEl!);
     this.renderNodes(viewport);
 
-    if (!this.contentEl.querySelector('.bread-trail-graph-legend')) {
+    if (!panel.querySelector('.bread-trail-graph-legend')) {
       this.renderLegend();
     }
 
-    if (!this.contentEl.querySelector('.bread-trail-edge-filter')) {
+    if (!panel.querySelector('.bread-trail-edge-filter')) {
       this.renderEdgeFilter();
     }
   }
@@ -261,6 +268,14 @@ export class GraphSwitcher extends Modal {
     const stageWidth = this.stageEl ? this.stageEl.getBoundingClientRect().width : 1400;
     const sequenceGap = Math.max(stageWidth * 0.25, 300);
 
+    // Place siblings/related below the deepest child row so they never overlap
+    const maxChildDepth = children.length > 0 ? Math.max(...children.map((n) => n.depth)) : 0;
+    const maxParentDepth = parents.length > 0 ? Math.max(...parents.map((n) => n.depth)) : 0;
+    const siblingsRowOffset = (maxChildDepth + 1) * VERTICAL_GAP;
+    const relatedRowOffset = siblingsRowOffset + VERTICAL_GAP;
+    const siblingsRowOffsetH = (maxParentDepth + 1) * VERTICAL_GAP;
+    const relatedRowOffsetH = siblingsRowOffsetH + VERTICAL_GAP;
+
     if (this.horizontalOrientation) {
       // Horizontal: parents left, children right, prev/next vertical
       this.layoutHierarchy(parents, -1, true);
@@ -274,8 +289,8 @@ export class GraphSwitcher extends Modal {
         node.y = CENTER_Y + node.depth * VERTICAL_GAP;
       });
       this.layoutSequenceChildren(sequenceChildren, nodes, true);
-      this.layoutRow(siblings, CENTER_Y + VERTICAL_GAP, CENTER_X, true);
-      this.layoutRow(related, CENTER_Y + VERTICAL_GAP * 2, CENTER_X, true);
+      this.layoutRow(siblings, CENTER_Y + siblingsRowOffsetH, CENTER_X, true);
+      this.layoutRow(related, CENTER_Y + relatedRowOffsetH, CENTER_X, true);
     } else {
       // Vertical: parents up, children down, prev/next horizontal
       previous.forEach((node) => {
@@ -289,8 +304,8 @@ export class GraphSwitcher extends Modal {
       this.layoutHierarchy(parents, -1, false);
       this.layoutHierarchy(children, 1, false);
       this.layoutSequenceChildren(sequenceChildren, nodes, false);
-      this.layoutRow(siblings, CENTER_Y + VERTICAL_GAP, CENTER_X, false);
-      this.layoutRow(related, CENTER_Y + VERTICAL_GAP * 2, CENTER_X, false);
+      this.layoutRow(siblings, CENTER_Y + siblingsRowOffset, CENTER_X, false);
+      this.layoutRow(related, CENTER_Y + relatedRowOffset, CENTER_X, false);
     }
   }
 
@@ -405,7 +420,20 @@ export class GraphSwitcher extends Modal {
       const label = this.getLabel(node.file);
       nodeEl.setAttribute('aria-label', `${this.capitalize(node.relation)}: ${label}`);
       setIcon(nodeEl.createSpan('bread-trail-graph-node-icon'), this.getIcon(node.relation));
-      nodeEl.createSpan({ text: label, cls: 'bread-trail-graph-node-label' });
+      const labelWrap = nodeEl.createSpan('bread-trail-graph-node-label-wrap');
+      labelWrap.createSpan({ text: label, cls: 'bread-trail-graph-node-label' });
+
+      // Show user-specified metadata property below label
+      if (this.settings.graphNodeMetaProperty) {
+        const fm = this.app.metadataCache.getFileCache(node.file)?.frontmatter;
+        const metaVal: unknown = fm?.[this.settings.graphNodeMetaProperty];
+        if (metaVal !== undefined && metaVal !== null && metaVal !== '') {
+          const display = Array.isArray(metaVal)
+            ? (metaVal as unknown[]).map((v) => (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : '')).filter(Boolean).join(', ')
+            : (typeof metaVal === 'string' || typeof metaVal === 'number' || typeof metaVal === 'boolean' ? String(metaVal) : '');
+          labelWrap.createSpan({ text: display, cls: 'bread-trail-graph-node-meta' });
+        }
+      }
 
       // Show sequence position for prev/next/current nodes
       if ((node.relation === 'previous' || node.relation === 'next' || node.relation === 'current') && node.sequencePosition && node.sequenceLength) {
@@ -436,7 +464,8 @@ export class GraphSwitcher extends Modal {
   }
 
   private renderLegend() {
-    const legendEl = this.contentEl.createDiv('bread-trail-graph-legend');
+    const panel = this.graphPanelEl!;
+    const legendEl = panel.createDiv('bread-trail-graph-legend');
     legendEl.createSpan({ text: '↑ parent' });
     legendEl.createSpan({ text: '↓ child' });
     legendEl.createSpan({ text: '← previous' });
@@ -446,7 +475,7 @@ export class GraphSwitcher extends Modal {
     legendEl.createSpan({ text: '↗ related' });
 
     // Add controls description at the bottom
-    this.contentEl.createDiv({
+    panel.createDiv({
       text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • =/−: zoom • Type to filter',
       cls: 'bread-trail-graph-controls-footer'
     });
@@ -455,7 +484,7 @@ export class GraphSwitcher extends Modal {
   private renderEdgeFilter() {
     if (this.allEdgeTypes.size === 0) return;
 
-    const filterContainer = this.contentEl.createDiv('bread-trail-edge-filter');
+    const filterContainer = this.graphPanelEl!.createDiv('bread-trail-edge-filter');
     filterContainer.createEl('span', { text: 'Edge types:', cls: 'bread-trail-edge-filter-label' });
 
     const checkboxContainer = filterContainer.createDiv('bread-trail-edge-filter-checkboxes');
@@ -649,6 +678,32 @@ export class GraphSwitcher extends Modal {
     if (!skipCenter) {
       this.centerSelectedNodeDebounced();
     }
+    void this.updatePreview();
+  }
+
+  private async updatePreview() {
+    if (!this.previewEl) return;
+    const node = this.nodes.find((n) => n.file.path === this.selectedPath);
+    if (!node) return;
+
+    this.previewEl.empty();
+
+    // Title bar
+    const titleEl = this.previewEl.createDiv('bread-trail-preview-title');
+    setIcon(titleEl.createSpan('bread-trail-preview-title-icon'), this.getIcon(node.relation));
+    titleEl.createSpan({ text: node.file.basename });
+
+    // Rendered content
+    const contentEl = this.previewEl.createDiv('bread-trail-preview-content');
+    try {
+      const source = await this.app.vault.read(node.file);
+      this.previewComponent.unload();
+      this.previewComponent = new Component();
+      this.previewComponent.load();
+      await MarkdownRenderer.render(this.app, source, contentEl, node.file.path, this.previewComponent);
+    } catch {
+      contentEl.createEl('p', { text: 'Could not read file.', cls: 'mod-muted' });
+    }
   }
 
   private updateNodeFading() {
@@ -768,7 +823,9 @@ export class GraphSwitcher extends Modal {
   private getDirectionalDistance(current: GraphNode, candidate: GraphNode, direction: 'up' | 'down' | 'left' | 'right'): number {
     const x = Math.abs(candidate.x - current.x);
     const y = Math.abs(candidate.y - current.y);
-    return direction === 'up' || direction === 'down' ? y + x * 2 : x + y * 2;
+    // For up/down: y is primary, x only breaks ties (avoids skipping the root when parent is off-center)
+    // For left/right: x is primary, y breaks ties
+    return direction === 'up' || direction === 'down' ? y + x * 0.1 : x + y * 2;
   }
 
   private centerSelectedNodeDebounced() {
@@ -860,9 +917,9 @@ export class GraphSwitcher extends Modal {
     if (this.filterTimeout) window.clearTimeout(this.filterTimeout);
 
     // Show filter text
-    let filterEl = this.contentEl.querySelector('.bread-trail-filter-indicator') as HTMLElement;
+    let filterEl = this.graphPanelEl!.querySelector('.bread-trail-filter-indicator') as HTMLElement;
     if (!filterEl) {
-      filterEl = this.contentEl.createDiv('bread-trail-filter-indicator');
+      filterEl = this.graphPanelEl!.createDiv('bread-trail-filter-indicator');
     }
 
     if (this.filterText) {
