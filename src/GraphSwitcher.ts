@@ -351,7 +351,7 @@ export class GraphSwitcher extends Modal {
     const idealGap = stageWidth * 0.25;
 
     // Get actual node max-width from CSS for minimum safe gap
-    const computedStyle = this.stageEl ? getComputedStyle(this.stageEl) : getComputedStyle(document.documentElement);
+    const computedStyle = this.stageEl ? getComputedStyle(this.stageEl) : getComputedStyle(activeDocument.documentElement);
     const nodeMaxWidth = parseInt(computedStyle.getPropertyValue('--node-max-width') || '260', 10);
     const minGap = nodeMaxWidth * 1.15; // 15% padding
 
@@ -409,7 +409,7 @@ export class GraphSwitcher extends Modal {
 
       // Show sequence position for prev/next/current nodes
       if ((node.relation === 'previous' || node.relation === 'next' || node.relation === 'current') && node.sequencePosition && node.sequenceLength) {
-        const posEl = nodeEl.createSpan({
+        nodeEl.createSpan({
           text: `${node.sequencePosition}/${node.sequenceLength}`,
           cls: 'bread-trail-graph-node-depth bread-trail-graph-node-sequence-number'
         });
@@ -804,7 +804,7 @@ export class GraphSwitcher extends Modal {
       e.preventDefault();
     });
 
-    document.addEventListener('mousemove', (e) => {
+    activeDocument.addEventListener('mousemove', (e) => {
       if (!this.isDragging) return;
       this.panOffset = {
         x: e.clientX - this.dragStart.x,
@@ -814,7 +814,7 @@ export class GraphSwitcher extends Modal {
       viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
     });
 
-    document.addEventListener('mouseup', () => {
+    activeDocument.addEventListener('mouseup', () => {
       if (this.isDragging) {
         this.isDragging = false;
         if (this.stageEl) this.stageEl.style.cursor = '';
