@@ -600,23 +600,14 @@ export class GraphSwitcher extends Modal {
 
   private zoomIn(): false {
     this.zoomLevel = Math.min(2, this.zoomLevel + 0.1);
-    this.applyZoom();
+    this.centerSelectedNode(); // Recenter at new zoom level
     return false;
   }
 
   private zoomOut(): false {
     this.zoomLevel = Math.max(0.5, this.zoomLevel - 0.1);
-    this.applyZoom();
+    this.centerSelectedNode(); // Recenter at new zoom level
     return false;
-  }
-
-  private applyZoom() {
-    if (!this.stageEl) return;
-    const viewport = this.stageEl.querySelector('.bread-trail-graph-viewport') as HTMLElement;
-    if (!viewport) return;
-
-    viewport.style.transformOrigin = '0 0';
-    viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
   }
 
   private toggleOrientation(): false {
