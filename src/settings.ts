@@ -67,7 +67,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .setName('Graph label property')
       .setDesc('Frontmatter property used for graph node labels. Uses the first value when the property is a list. Leave blank to use filenames.')
       .addText((text) => {
-        text.setPlaceholder('aliases');
+        text.setPlaceholder('Aliases');
         text.setValue(this.plugin.settings.graphLabelProperty);
         text.onChange(async (value) => {
           this.plugin.settings.graphLabelProperty = value.trim();
@@ -118,7 +118,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Graph node sort order')
-      .setDesc('Alphabetical sorts nodes A-Z. Importance places nodes with more descendants toward the center (often more frequently referenced hubs).')
+      .setDesc('Alphabetical sorts nodes a-z. Importance places nodes with more descendants toward the center (often more frequently referenced hubs).')
       .addDropdown((dropdown) => {
         dropdown.addOption('alphabetical', 'Alphabetical');
         dropdown.addOption('importance', 'Importance (by descendant count)');

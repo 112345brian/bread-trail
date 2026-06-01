@@ -128,6 +128,10 @@
   overflow: hidden;
 }
 
+.bread-trail-graph-stage.is-grabbing {
+  cursor: grabbing;
+}
+
 .bread-trail-graph-viewport {
   position: absolute;
   left: 0;
@@ -135,6 +139,7 @@
   width: 5000px;
   height: 3000px;
   transition: transform 120ms ease-out;
+  transform-origin: 0 0;
 }
 
 .bread-trail-graph-edges {
