@@ -1,8 +1,8 @@
 # Bread Trail
 
-Navigate and edit your [Breadcrumbs](https://github.com/SkepticMystic/breadcrumbs) graph — view hierarchies, reorder via drag-drop, quick-switch between related notes.
+Navigate and edit your [[Breadcrumbs](https://github.com/michaelpporter/breadcrumbs)](https://github.com/SkepticMystic/breadcrumbs) graph — view hierarchies, reorder via drag-drop, quick-switch between related notes.
 
-An auxiliary plugin for Breadcrumbs that provides enhanced navigation and editing tools for your knowledge graph.
+An auxiliary plugin for [Breadcrumbs](https://github.com/michaelpporter/breadcrumbs) that provides enhanced navigation and editing tools for your knowledge graph.
 
 ## Features
 
@@ -54,7 +54,7 @@ Hierarchical tree view of all children beneath the current note:
 
 ## Requirements
 
-**Breadcrumbs plugin required** - Bread Trail detects Breadcrumbs on startup and shows install instructions if missing.
+**[Breadcrumbs](https://github.com/michaelpporter/breadcrumbs) plugin required** - Bread Trail detects [Breadcrumbs](https://github.com/michaelpporter/breadcrumbs) on startup and shows install instructions if missing.
 
 ## Installation
 
@@ -110,7 +110,7 @@ Filter graph to specific relationships:
 1. Open outline view
 2. Drag a note onto another note
 3. The dragged note's `next` field is updated to point to the target
-4. Breadcrumbs automatically picks up the change
+4. [Breadcrumbs](https://github.com/michaelpporter/breadcrumbs) automatically picks up the change
 
 ## Development
 
@@ -125,7 +125,7 @@ npm run lint   # Check code quality
 
 Built by [112345brian](https://github.com/112345brian)
 
-Integrates with [Breadcrumbs](https://github.com/SkepticMystic/breadcrumbs) by SkepticMystic
+Integrates with [[Breadcrumbs](https://github.com/michaelpporter/breadcrumbs)](https://github.com/SkepticMystic/breadcrumbs) by SkepticMystic
 
 ## License
 
