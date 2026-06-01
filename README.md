@@ -1,92 +1,132 @@
-# Obsidian Sample Plugin
+# Bread Trail
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+Navigate and edit your [Breadcrumbs](https://github.com/SkepticMystic/breadcrumbs) graph — view hierarchies, reorder via drag-drop, quick-switch between related notes.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+An auxiliary plugin for Breadcrumbs that provides enhanced navigation and editing tools for your knowledge graph.
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
+## Features
 
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and outputs a Notice on click.
-- Registers a global interval which logs 'setInterval' to the console.
+### Graph Switcher
+Visual graph navigation with spatial layout showing your note's relationships:
 
-## First time developing plugins?
+- **Edge type filtering**: Toggle individual edge types (up/down/next/uses/etc.) with checkboxes to focus on specific relationships
+- **Keyboard zoom**: Press `=` to zoom in, `-` to zoom out (0.5x-2x range)
+- **Scroll wheel zoom**: Ctrl/Cmd+scroll for precise zoom control
+- **Type to filter**: Start typing to highlight matching nodes (auto-clears in 3s)
+- **Fade non-connected**: Dim nodes not directly linked to selection for clarity
+- **Sequence numbering**: Shows position/total (e.g., 3/7) for prev/next chains
+- **Root node styling**: Exploration root has thicker border + glow
+- **Styled edges**: Different colors/styles by relation type
+  - Parent/child: accent color, solid, 2.5px
+  - Prev/next: blue, solid, 2.5px  
+  - Siblings/related: dashed, 60% opacity
+- **Mouse pan**: Click-drag background to pan around graph
+- **Two-stage navigation**: First Enter explores a node (recenters graph), second Enter opens it
+- **Escape returns**: Escape key returns to initial file if you haven't confirmed navigation
 
-Quick starting guide for new plugin devs:
+**Controls:**
+- Arrows/WASD: navigate between nodes
+- Enter: explore node (recenter graph on it)
+- 2×Enter: open file  
+- Shift+Enter: flip orientation (vertical ↔ horizontal)
+- Home: recenter on selected node
+- `=` / `-`: zoom in/out
+- Ctrl/Cmd+scroll: zoom
+- Type: filter nodes by name
+- Escape: clear filter (or close modal)
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `src/main.ts` to `main.js`.
-- Make changes to `src/main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+### Quick Switcher
+Fuzzy search through breadcrumb-related notes with keyboard shortcuts:
 
-## Releasing new releases
+- Shows parents, children, previous, next, siblings, and related notes
+- Customizable traversal depth per relation type
+- Cmd+arrows for direct navigation (up=parent, down=child, left=previous, right=next)
+- Option to include all vault files with breadcrumb context
+- Sequence position display (e.g., "3/7") for prev/next chains
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+### Breadcrumb Outline
+Hierarchical tree view of all children beneath the current note:
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+- Recursive traversal showing full descendant tree
+- Click to navigate
+- Drag-and-drop to reorder files (updates `next` field in frontmatter)
+- Live refresh when graph updates
 
-## Adding your plugin to the community plugin list
+## Requirements
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+**Breadcrumbs plugin required** - Bread Trail detects Breadcrumbs on startup and shows install instructions if missing.
 
-## How to use
+## Installation
 
-- Clone this repo.
-- Make sure your NodeJS is at least v18 (`node --version`).
-- `npm i` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+### Via BRAT (recommended for beta testing)
+1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
+2. Add `112345brian/bread-trail` as a beta plugin
+3. Enable Bread Trail in Community Plugins settings
 
-## Manually installing the plugin
+### Manual Installation
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/112345brian/bread-trail/releases)
+2. Create folder `VaultFolder/.obsidian/plugins/bread-trail/`
+3. Copy the three files into that folder
+4. Reload Obsidian and enable the plugin
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+## Settings
 
-## Improve code quality with eslint
+### Quick Switcher Traversal
+- **Parent/Child/Previous/Next depth**: Maximum levels to traverse (set to 0 to disable)
 
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code.
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
+### Graph View
+- **Graph label property**: Frontmatter property for node labels (default: `aliases`). Leave blank to use filenames.
+- **Show siblings in graph**: Include other children of your parents as siblings
+- **Show sequence children in graph**: Include one level of children beneath prev/next notes
+- **Single click opens note**: When enabled, clicking a node opens it immediately. When disabled (default), first click selects, second click opens.
+- **Graph node sort order**: 
+  - **Alphabetical**: Sort nodes A-Z
+  - **Importance**: Place nodes with more descendants toward center (hub detection)
 
-## Funding URL
+## Commands
 
-You can include funding URLs where people who use your plugin can financially support it.
+- **Show trail for current note**: Basic modal showing parents/children
+- **Show breadcrumb outline**: Hierarchical tree view with drag-drop reordering
+- **Quick switch to breadcrumb-related note**: Fuzzy search through related notes only
+- **Quick switch notes with breadcrumb context**: Fuzzy search all vault notes with relation metadata
+- **Show breadcrumb graph switcher**: Visual graph navigation
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+## Tips
 
-```json
-{
-	"fundingUrl": "https://buymeacoffee.com"
-}
+### Graph Switcher Workflow
+1. Open graph switcher on any note
+2. Use arrow keys to explore relationships visually
+3. Press Enter to recenter graph on a new node (explore its connections)
+4. Press Enter again on the same node to open it
+5. Press Escape to return to your starting point without opening anything
+
+### Edge Type Filtering
+Filter graph to specific relationships:
+- Only "uses" and "used_by" to see dependency graphs
+- Hide "next"/"prev" to focus on hierarchy
+- Show only custom edge types you've defined
+
+### Reordering with Outline
+1. Open outline view
+2. Drag a note onto another note
+3. The dragged note's `next` field is updated to point to the target
+4. Breadcrumbs automatically picks up the change
+
+## Development
+
+```bash
+npm install
+npm run dev    # Watch mode
+npm run build  # Production build
+npm run lint   # Check code quality
 ```
 
-If you have multiple URLs, you can also do:
+## Credits
 
-```json
-{
-	"fundingUrl": {
-		"Buy Me a Coffee": "https://buymeacoffee.com",
-		"GitHub Sponsor": "https://github.com/sponsors",
-		"Patreon": "https://www.patreon.com/"
-	}
-}
-```
+Built by [112345brian](https://github.com/112345brian)
 
-## API Documentation
+Integrates with [Breadcrumbs](https://github.com/SkepticMystic/breadcrumbs) by SkepticMystic
 
-See https://docs.obsidian.md
+## License
+
+MIT
