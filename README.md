@@ -129,4 +129,4 @@ Integrates with [Breadcrumbs](https://github.com/SkepticMystic/breadcrumbs) by S
 
 ## License
 
-0BSD (Zero-Clause BSD) - see [LICENSE](LICENSE) file for details
+MIT - see [LICENSE](LICENSE) file for details
