@@ -11,6 +11,7 @@ interface GraphNode {
   x: number;
   y: number;
   sequencePosition?: number;
+  sequenceLength?: number;
 }
 
 type Relation = 'current' | 'parent' | 'child' | 'previous' | 'next' | 'sibling' | 'sequence-child' | 'related';
@@ -36,6 +37,9 @@ export class GraphSwitcher extends Modal {
   private dragStart = { x: 0, y: 0 };
   private panOffset = { x: 0, y: 0 };
   private centerTimeout?: ReturnType<typeof setTimeout>;
+  private zoomLevel = 1;
+  private filterText = '';
+  private filterTimeout?: ReturnType<typeof setTimeout>;
 
   constructor(
     app: App,
@@ -53,7 +57,7 @@ export class GraphSwitcher extends Modal {
     this.titleEl.setText('Breadcrumb graph switcher');
     this.contentEl.addClass('bread-trail-graph-modal');
     this.contentEl.createEl('p', {
-      text: 'Arrow keys or WASD to navigate. Enter to explore selected note. Enter again to open it. Shift+Enter to flip orientation.',
+      text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • Ctrl+scroll: zoom • Type to filter',
       cls: 'mod-muted bread-trail-graph-help',
     });
 
@@ -139,16 +143,19 @@ export class GraphSwitcher extends Modal {
 
     if (current) {
       current.sequencePosition = currentPosition;
+      current.sequenceLength = totalLength;
     }
 
     // Previous nodes: reverse order (furthest is 1, closest is previous.length)
     previous.forEach((node) => {
       node.sequencePosition = currentPosition - node.depth;
+      node.sequenceLength = totalLength;
     });
 
     // Next nodes: forward order (first is currentPosition + 1, etc.)
     next.forEach((node) => {
       node.sequencePosition = currentPosition + node.depth;
+      node.sequenceLength = totalLength;
     });
   }
 
@@ -361,8 +368,13 @@ export class GraphSwitcher extends Modal {
 
   private renderNodes(stageEl: HTMLElement) {
     for (const node of this.nodes) {
+      const classes = [`bread-trail-graph-node`, `bread-trail-graph-node-${node.relation}`];
+      // Mark root node (the one we're exploring from) distinctly
+      if (node.file.path === this.rootFile.path) {
+        classes.push('bread-trail-graph-node-root');
+      }
       const nodeEl = stageEl.createEl('button', {
-        cls: `bread-trail-graph-node bread-trail-graph-node-${node.relation}`,
+        cls: classes.join(' '),
       });
       nodeEl.style.left = `${node.x}px`;
       nodeEl.style.top = `${node.y}px`;
@@ -372,9 +384,9 @@ export class GraphSwitcher extends Modal {
       nodeEl.createSpan({ text: label, cls: 'bread-trail-graph-node-label' });
 
       // Show sequence position for prev/next/current nodes
-      if ((node.relation === 'previous' || node.relation === 'next' || node.relation === 'current') && node.sequencePosition) {
+      if ((node.relation === 'previous' || node.relation === 'next' || node.relation === 'current') && node.sequencePosition && node.sequenceLength) {
         const posEl = nodeEl.createSpan({
-          text: String(node.sequencePosition),
+          text: `${node.sequencePosition}/${node.sequenceLength}`,
           cls: 'bread-trail-graph-node-depth bread-trail-graph-node-sequence-number'
         });
       } else if (node.depth > 1) {
@@ -466,6 +478,31 @@ export class GraphSwitcher extends Modal {
     this.scope.register([], 'd', () => this.moveSelection('right'));
     this.scope.register([], 'Enter', () => this.handleEnter());
     this.scope.register(['Shift'], 'Enter', () => this.toggleOrientation());
+    this.scope.register([], 'Home', () => this.recenter());
+    this.scope.register([], 'Escape', () => {
+      if (this.filterText) {
+        this.clearFilter();
+        return false;
+      }
+      return true; // Let escape close modal if no filter active
+    });
+
+    // Type to filter
+    this.contentEl.addEventListener('keydown', (e) => {
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        this.addToFilter(e.key);
+        e.preventDefault();
+      } else if (e.key === 'Backspace' && this.filterText) {
+        this.removeFromFilter();
+        e.preventDefault();
+      }
+    });
+  }
+
+  private recenter(): false {
+    if (this.centerTimeout) clearTimeout(this.centerTimeout);
+    this.centerSelectedNode();
+    return false;
   }
 
   private toggleOrientation(): false {
@@ -497,8 +534,31 @@ export class GraphSwitcher extends Modal {
     this.selectedPath = path;
     this.nodeElements.get(path)?.addClass('is-selected');
     this.updateEdgesForSelection();
+    this.updateNodeFading();
     if (!skipCenter) {
       this.centerSelectedNodeDebounced();
+    }
+  }
+
+  private updateNodeFading() {
+    // Get connected node paths
+    const selectedNode = this.nodes.find((node) => node.file.path === this.selectedPath);
+    if (!selectedNode) return;
+
+    const connected = new Set<string>([this.selectedPath]);
+    for (const node of this.nodes) {
+      if (node.sourcePath === this.selectedPath || selectedNode.sourcePath === node.file.path) {
+        connected.add(node.file.path);
+      }
+    }
+
+    // Fade non-connected nodes
+    for (const [path, el] of this.nodeElements) {
+      if (connected.has(path)) {
+        el.removeClass('bread-trail-graph-node-faded');
+      } else {
+        el.addClass('bread-trail-graph-node-faded');
+      }
     }
   }
 
@@ -643,6 +703,68 @@ export class GraphSwitcher extends Modal {
         if (this.stageEl) this.stageEl.style.cursor = '';
       }
     });
+
+    // Scroll wheel zoom
+    stageEl.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+
+      const delta = -e.deltaY / 1000;
+      this.zoomLevel = Math.max(0.5, Math.min(2, this.zoomLevel + delta));
+
+      viewport.style.transformOrigin = '0 0';
+      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
+    });
+  }
+
+  private addToFilter(char: string) {
+    this.filterText += char.toLowerCase();
+    this.applyFilter();
+  }
+
+  private removeFromFilter() {
+    this.filterText = this.filterText.slice(0, -1);
+    this.applyFilter();
+  }
+
+  private clearFilter() {
+    this.filterText = '';
+    this.applyFilter();
+  }
+
+  private applyFilter() {
+    if (this.filterTimeout) clearTimeout(this.filterTimeout);
+
+    // Show filter text
+    let filterEl = this.contentEl.querySelector('.bread-trail-filter-indicator') as HTMLElement;
+    if (!filterEl) {
+      filterEl = this.contentEl.createDiv('bread-trail-filter-indicator');
+    }
+
+    if (this.filterText) {
+      filterEl.setText(`Filter: ${this.filterText}`);
+      filterEl.style.display = 'block';
+    } else {
+      filterEl.style.display = 'none';
+    }
+
+    // Highlight matching nodes
+    for (const [path, el] of this.nodeElements) {
+      const node = this.nodes.find((n) => n.file.path === path);
+      if (!node) continue;
+
+      const label = this.getLabel(node.file).toLowerCase();
+      if (!this.filterText || label.includes(this.filterText)) {
+        el.removeClass('bread-trail-graph-node-filtered');
+      } else {
+        el.addClass('bread-trail-graph-node-filtered');
+      }
+    }
+
+    // Clear filter after 3 seconds of no typing
+    this.filterTimeout = setTimeout(() => {
+      this.clearFilter();
+    }, 3000);
   }
 
   private countDescendants(file: TFile): number {
