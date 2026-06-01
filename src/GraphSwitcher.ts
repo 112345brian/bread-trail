@@ -779,6 +779,10 @@ export class GraphSwitcher extends Modal {
     }, 500);
   }
 
+  private updateViewportTransform(viewport: HTMLElement) {
+    viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
+  }
+
   private centerSelectedNode() {
     const selected = this.nodes.find((node) => node.file.path === this.selectedPath);
     if (!selected || !this.stageEl) return;
@@ -794,8 +798,7 @@ export class GraphSwitcher extends Modal {
         x: centerX - (selected.x * this.zoomLevel),
         y: centerY - (selected.y * this.zoomLevel)
       };
-      viewport.style.transformOrigin = '0 0';
-      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
+      this.updateViewportTransform(viewport);
     }
   }
 
@@ -806,7 +809,7 @@ export class GraphSwitcher extends Modal {
       }
       this.isDragging = true;
       this.dragStart = { x: e.clientX - this.panOffset.x, y: e.clientY - this.panOffset.y };
-      stageEl.style.cursor = 'grabbing';
+      stageEl.addClass('is-grabbing');
       e.preventDefault();
     });
 
@@ -816,14 +819,13 @@ export class GraphSwitcher extends Modal {
         x: e.clientX - this.dragStart.x,
         y: e.clientY - this.dragStart.y,
       };
-      viewport.style.transformOrigin = '0 0';
-      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
+      this.updateViewportTransform(viewport);
     });
 
     activeDocument.addEventListener('mouseup', () => {
       if (this.isDragging) {
         this.isDragging = false;
-        if (this.stageEl) this.stageEl.style.cursor = '';
+        if (this.stageEl) this.stageEl.removeClass('is-grabbing');
       }
     });
 
@@ -835,8 +837,7 @@ export class GraphSwitcher extends Modal {
       const delta = -e.deltaY / 1000;
       this.zoomLevel = Math.max(0.5, Math.min(2, this.zoomLevel + delta));
 
-      viewport.style.transformOrigin = '0 0';
-      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
+      this.updateViewportTransform(viewport);
     });
   }
 
@@ -866,9 +867,9 @@ export class GraphSwitcher extends Modal {
 
     if (this.filterText) {
       filterEl.setText(`Filter: ${this.filterText}`);
-      filterEl.style.display = 'block';
+      filterEl.removeClass('is-hidden');
     } else {
-      filterEl.style.display = 'none';
+      filterEl.addClass('is-hidden');
     }
 
     // Highlight matching nodes
