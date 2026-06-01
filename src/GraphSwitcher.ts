@@ -706,22 +706,41 @@ export class GraphSwitcher extends Modal {
     }
   }
 
+  /** Query the BC graph directly for all nodes visible in the graph that are
+   *  actually connected to `file` via a BC edge (either direction). */
+  private getActuallyConnectedPaths(file: TFile): Set<string> {
+    const nodePaths = new Set(this.nodes.map((n) => n.file.path));
+    const connected = new Set<string>();
+
+    const incoming = this.bc.graph.get_incoming_edges(file.path).to_array();
+    const outgoing = this.bc.graph.get_outgoing_edges(file.path).to_array();
+
+    for (const edge of incoming) {
+      const path = edge.source_path?.(this.bc.graph) ?? edge.source;
+      if (path && nodePaths.has(path)) connected.add(path);
+    }
+    for (const edge of outgoing) {
+      const path = edge.target_path?.(this.bc.graph) ?? edge.target;
+      if (path && nodePaths.has(path)) connected.add(path);
+    }
+
+    return connected;
+  }
+
   private updateNodeFading() {
-    // Get connected node paths
     const selectedNode = this.nodes.find((node) => node.file.path === this.selectedPath);
     if (!selectedNode) return;
 
-    const connected = new Set<string>([this.selectedPath]);
-    for (const node of this.nodes) {
-      // Only consider nodes whose edge type is visible
-      if (node.edgeType && !this.visibleEdgeTypes.has(node.edgeType)) continue;
+    const connected = this.getActuallyConnectedPaths(selectedNode.file);
+    connected.add(this.selectedPath);
 
-      if (node.sourcePath === this.selectedPath || selectedNode.sourcePath === node.file.path) {
-        connected.add(node.file.path);
+    // Respect edge type filter: if all connections of a node's edge type are hidden, fade it
+    for (const node of this.nodes) {
+      if (node.edgeType && !this.visibleEdgeTypes.has(node.edgeType)) {
+        connected.delete(node.file.path);
       }
     }
 
-    // Fade non-connected nodes
     for (const [path, el] of this.nodeElements) {
       if (connected.has(path)) {
         el.removeClass('bread-trail-graph-node-faded');
@@ -733,40 +752,25 @@ export class GraphSwitcher extends Modal {
 
   private updateEdgesForSelection() {
     if (!this.edgeLayerEl) return;
-
-    // Clear existing edges
     this.edgeLayerEl.empty();
 
     const nodesByPath = new Map(this.nodes.map((node) => [node.file.path, node]));
     const selectedNode = nodesByPath.get(this.selectedPath);
     if (!selectedNode) return;
 
-    // Only render edges connected to the selected node
+    const connected = this.getActuallyConnectedPaths(selectedNode.file);
+
     for (const node of this.nodes) {
       if (node.file.path === this.selectedPath) continue;
-
-      // Skip if this node's edge type is filtered out
+      if (!connected.has(node.file.path)) continue;
       if (node.edgeType && !this.visibleEdgeTypes.has(node.edgeType)) continue;
 
-      // Check if this node is connected to the selected node
-      // Node is connected if:
-      // 1. Its edge comes FROM the selected node (node.sourcePath === this.selectedPath)
-      // 2. Its edge goes TO the selected node (selected node's sourcePath === node.file.path)
-      const isOutgoing = node.sourcePath === this.selectedPath;
-      const isIncoming = selectedNode.sourcePath === node.file.path;
-
-      if (isOutgoing || isIncoming) {
-        const source = nodesByPath.get(node.sourcePath);
-        const target = node;
-        if (!source) continue;
-
-        const line = this.edgeLayerEl.createSvg('line');
-        line.setAttribute('x1', String(source.x));
-        line.setAttribute('y1', String(source.y));
-        line.setAttribute('x2', String(target.x));
-        line.setAttribute('y2', String(target.y));
-        line.addClass(`bread-trail-graph-edge-${node.relation}`);
-      }
+      const line = this.edgeLayerEl.createSvg('line');
+      line.setAttribute('x1', String(selectedNode.x));
+      line.setAttribute('y1', String(selectedNode.y));
+      line.setAttribute('x2', String(node.x));
+      line.setAttribute('y2', String(node.y));
+      line.addClass(`bread-trail-graph-edge-${node.relation}`);
     }
   }
 
