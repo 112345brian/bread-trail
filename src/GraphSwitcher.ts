@@ -444,6 +444,12 @@ export class GraphSwitcher extends Modal {
     legendEl.createSpan({ text: '− sibling' });
     legendEl.createSpan({ text: '↓ sequence child' });
     legendEl.createSpan({ text: '↗ related' });
+
+    // Add controls description at the bottom
+    this.contentEl.createDiv({
+      text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • =/−: zoom • Type to filter',
+      cls: 'bread-trail-graph-controls-footer'
+    });
   }
 
   private renderEdgeFilter() {
