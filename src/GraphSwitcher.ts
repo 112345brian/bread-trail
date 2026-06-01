@@ -61,7 +61,7 @@ export class GraphSwitcher extends Modal {
 
     const controlsRow = this.contentEl.createDiv('bread-trail-graph-controls');
     controlsRow.createEl('p', {
-      text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • Ctrl+scroll: zoom • Type to filter',
+      text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • =/−: zoom • Type to filter',
       cls: 'mod-muted bread-trail-graph-help',
     });
 
@@ -570,6 +570,8 @@ export class GraphSwitcher extends Modal {
     this.scope.register([], 'Enter', () => this.handleEnter());
     this.scope.register(['Shift'], 'Enter', () => this.toggleOrientation());
     this.scope.register([], 'Home', () => this.recenter());
+    this.scope.register([], '=', () => this.zoomIn());
+    this.scope.register([], '-', () => this.zoomOut());
     this.scope.register([], 'Escape', () => {
       if (this.filterText) {
         this.clearFilter();
@@ -594,6 +596,27 @@ export class GraphSwitcher extends Modal {
     if (this.centerTimeout) clearTimeout(this.centerTimeout);
     this.centerSelectedNode();
     return false;
+  }
+
+  private zoomIn(): false {
+    this.zoomLevel = Math.min(2, this.zoomLevel + 0.1);
+    this.applyZoom();
+    return false;
+  }
+
+  private zoomOut(): false {
+    this.zoomLevel = Math.max(0.5, this.zoomLevel - 0.1);
+    this.applyZoom();
+    return false;
+  }
+
+  private applyZoom() {
+    if (!this.stageEl) return;
+    const viewport = this.stageEl.querySelector('.bread-trail-graph-viewport') as HTMLElement;
+    if (!viewport) return;
+
+    viewport.style.transformOrigin = '0 0';
+    viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
   }
 
   private toggleOrientation(): false {
@@ -770,7 +793,8 @@ export class GraphSwitcher extends Modal {
     const viewport = this.stageEl.querySelector('.bread-trail-graph-viewport') as HTMLElement;
     if (viewport) {
       this.panOffset = { x: centerX - selected.x, y: centerY - selected.y };
-      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
+      viewport.style.transformOrigin = '0 0';
+      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
     }
   }
 
@@ -791,7 +815,8 @@ export class GraphSwitcher extends Modal {
         x: e.clientX - this.dragStart.x,
         y: e.clientY - this.dragStart.y,
       };
-      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px)`;
+      viewport.style.transformOrigin = '0 0';
+      viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
     });
 
     document.addEventListener('mouseup', () => {
