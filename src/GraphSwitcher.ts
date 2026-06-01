@@ -638,6 +638,9 @@ export class GraphSwitcher extends Modal {
 
     const connected = new Set<string>([this.selectedPath]);
     for (const node of this.nodes) {
+      // Only consider nodes whose edge type is visible
+      if (node.edgeType && !this.visibleEdgeTypes.has(node.edgeType)) continue;
+
       if (node.sourcePath === this.selectedPath || selectedNode.sourcePath === node.file.path) {
         connected.add(node.file.path);
       }
@@ -666,6 +669,9 @@ export class GraphSwitcher extends Modal {
     // Only render edges connected to the selected node
     for (const node of this.nodes) {
       if (node.file.path === this.selectedPath) continue;
+
+      // Skip if this node's edge type is filtered out
+      if (node.edgeType && !this.visibleEdgeTypes.has(node.edgeType)) continue;
 
       // Check if this node is connected to the selected node
       // Node is connected if:
