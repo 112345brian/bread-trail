@@ -102,8 +102,17 @@
   overflow: hidden;
 }
 
+.bread-trail-graph-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
 .bread-trail-graph-help {
-  margin-top: 0;
+  margin: 0;
+  flex: 1;
 }
 
 .bread-trail-graph-stage {
@@ -279,6 +288,69 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   z-index: 100;
   display: none;
+}
+
+.bread-trail-graph-node-hidden-edge {
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+.bread-trail-edge-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+}
+
+.bread-trail-edge-filter-label {
+  font-weight: 600;
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.bread-trail-edge-filter-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.bread-trail-edge-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.bread-trail-edge-filter-item input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.bread-trail-edge-filter-text {
+  color: var(--text-muted);
+}
+
+.bread-trail-edge-filter-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.bread-trail-edge-filter-btn {
+  padding: 4px 12px;
+  font-size: 0.8em;
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.bread-trail-edge-filter-btn:hover {
+  background: var(--interactive-hover);
 }
 
 .bread-trail-graph-legend {

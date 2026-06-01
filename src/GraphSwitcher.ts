@@ -40,6 +40,8 @@ export class GraphSwitcher extends Modal {
   private zoomLevel = 1;
   private filterText = '';
   private filterTimeout?: ReturnType<typeof setTimeout>;
+  private visibleEdgeTypes = new Set<string>();
+  private allEdgeTypes = new Set<string>();
 
   constructor(
     app: App,
@@ -56,7 +58,9 @@ export class GraphSwitcher extends Modal {
   onOpen() {
     this.titleEl.setText('Breadcrumb graph switcher');
     this.contentEl.addClass('bread-trail-graph-modal');
-    this.contentEl.createEl('p', {
+
+    const controlsRow = this.contentEl.createDiv('bread-trail-graph-controls');
+    controlsRow.createEl('p', {
       text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • Ctrl+scroll: zoom • Type to filter',
       cls: 'mod-muted bread-trail-graph-help',
     });
@@ -107,6 +111,10 @@ export class GraphSwitcher extends Modal {
     if (!this.contentEl.querySelector('.bread-trail-graph-legend')) {
       this.renderLegend();
     }
+
+    if (!this.contentEl.querySelector('.bread-trail-edge-filter')) {
+      this.renderEdgeFilter();
+    }
   }
 
   private buildNodes(): GraphNode[] {
@@ -129,8 +137,24 @@ export class GraphSwitcher extends Modal {
     this.addSequenceChildren(nodes, seen);
 
     this.assignSequencePositions(nodes);
+    this.collectEdgeTypes(nodes);
     this.layoutNodes(nodes);
     return nodes;
+  }
+
+  private collectEdgeTypes(nodes: GraphNode[]) {
+    // Collect all unique edge types from the graph
+    this.allEdgeTypes.clear();
+    for (const node of nodes) {
+      if (node.edgeType) {
+        this.allEdgeTypes.add(node.edgeType);
+      }
+    }
+
+    // Initialize visible types to all types if not set
+    if (this.visibleEdgeTypes.size === 0) {
+      this.visibleEdgeTypes = new Set(this.allEdgeTypes);
+    }
   }
 
   private assignSequencePositions(nodes: GraphNode[]) {
@@ -420,6 +444,73 @@ export class GraphSwitcher extends Modal {
     legendEl.createSpan({ text: '− sibling' });
     legendEl.createSpan({ text: '↓ sequence child' });
     legendEl.createSpan({ text: '↗ related' });
+  }
+
+  private renderEdgeFilter() {
+    if (this.allEdgeTypes.size === 0) return;
+
+    const filterContainer = this.contentEl.createDiv('bread-trail-edge-filter');
+    filterContainer.createEl('span', { text: 'Edge types:', cls: 'bread-trail-edge-filter-label' });
+
+    const checkboxContainer = filterContainer.createDiv('bread-trail-edge-filter-checkboxes');
+
+    // Sort edge types alphabetically
+    const sortedTypes = Array.from(this.allEdgeTypes).sort();
+
+    for (const edgeType of sortedTypes) {
+      const label = checkboxContainer.createEl('label', { cls: 'bread-trail-edge-filter-item' });
+
+      const checkbox = label.createEl('input', { type: 'checkbox' });
+      checkbox.checked = this.visibleEdgeTypes.has(edgeType);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          this.visibleEdgeTypes.add(edgeType);
+        } else {
+          this.visibleEdgeTypes.delete(edgeType);
+        }
+        this.applyEdgeTypeFilter();
+      });
+
+      label.createSpan({ text: edgeType, cls: 'bread-trail-edge-filter-text' });
+    }
+
+    // "All" / "None" buttons
+    const buttonsDiv = filterContainer.createDiv('bread-trail-edge-filter-buttons');
+
+    const allBtn = buttonsDiv.createEl('button', { text: 'All', cls: 'bread-trail-edge-filter-btn' });
+    allBtn.addEventListener('click', () => {
+      this.visibleEdgeTypes = new Set(this.allEdgeTypes);
+      checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        (cb as HTMLInputElement).checked = true;
+      });
+      this.applyEdgeTypeFilter();
+    });
+
+    const noneBtn = buttonsDiv.createEl('button', { text: 'None', cls: 'bread-trail-edge-filter-btn' });
+    noneBtn.addEventListener('click', () => {
+      this.visibleEdgeTypes.clear();
+      checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+        (cb as HTMLInputElement).checked = false;
+      });
+      this.applyEdgeTypeFilter();
+    });
+  }
+
+  private applyEdgeTypeFilter() {
+    // Hide nodes whose edge type is not visible
+    for (const [path, el] of this.nodeElements) {
+      const node = this.nodes.find((n) => n.file.path === path);
+      if (!node || node.relation === 'current') continue;
+
+      if (this.visibleEdgeTypes.has(node.edgeType) || !node.edgeType) {
+        el.removeClass('bread-trail-graph-node-hidden-edge');
+      } else {
+        el.addClass('bread-trail-graph-node-hidden-edge');
+      }
+    }
+
+    // Re-render edges to hide those from filtered nodes
+    this.updateEdgesForSelection();
   }
 
   private getNeighbors(file: TFile): GraphNode[] {
