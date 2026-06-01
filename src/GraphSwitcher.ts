@@ -31,15 +31,15 @@ export class GraphSwitcher extends Modal {
   private confirmed = false;
   private initialFile: TFile;
   private lastEnterPress = 0;
-  private renderTimeout?: ReturnType<typeof setTimeout>;
+  private renderTimeout?: number;
   private horizontalOrientation = false;
   private isDragging = false;
   private dragStart = { x: 0, y: 0 };
   private panOffset = { x: 0, y: 0 };
-  private centerTimeout?: ReturnType<typeof setTimeout>;
+  private centerTimeout?: number;
   private zoomLevel = 1;
   private filterText = '';
-  private filterTimeout?: ReturnType<typeof setTimeout>;
+  private filterTimeout?: number;
   private visibleEdgeTypes = new Set<string>();
   private allEdgeTypes = new Set<string>();
 
@@ -68,8 +68,8 @@ export class GraphSwitcher extends Modal {
     this.render();
 
     // Center on the current node after DOM renders and layout completes
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
         this.centerSelectedNode();
       });
     });
@@ -593,7 +593,7 @@ export class GraphSwitcher extends Modal {
   }
 
   private recenter(): false {
-    if (this.centerTimeout) clearTimeout(this.centerTimeout);
+    if (this.centerTimeout) window.clearTimeout(this.centerTimeout);
     this.centerSelectedNode();
     return false;
   }
@@ -613,7 +613,7 @@ export class GraphSwitcher extends Modal {
   private toggleOrientation(): false {
     this.horizontalOrientation = !this.horizontalOrientation;
     this.render();
-    requestAnimationFrame(() => { this.centerSelectedNode(); });
+    window.requestAnimationFrame(() => { this.centerSelectedNode(); });
     return false;
   }
 
@@ -627,7 +627,7 @@ export class GraphSwitcher extends Modal {
       .sort((left, right) => left.score - right.score)[0]?.node;
     if (next) {
       // Cancel debounce and immediately center when using arrow keys
-      if (this.centerTimeout) clearTimeout(this.centerTimeout);
+      if (this.centerTimeout) window.clearTimeout(this.centerTimeout);
       this.selectNode(next.file.path, true);
       this.centerSelectedNode();
     }
@@ -719,7 +719,7 @@ export class GraphSwitcher extends Modal {
     // Double-tap detection: if Enter pressed within 500ms, open immediately
     if (timeSinceLastEnter < 500) {
       if (this.renderTimeout) {
-        clearTimeout(this.renderTimeout);
+        window.clearTimeout(this.renderTimeout);
         this.renderTimeout = undefined;
       }
       this.confirmed = true;
@@ -733,11 +733,11 @@ export class GraphSwitcher extends Modal {
     // First press: re-center graph around selected node
     if (selected.file.path !== this.rootFile.path) {
       // Debounce: wait 150ms before rendering in case of double-tap
-      if (this.renderTimeout) clearTimeout(this.renderTimeout);
-      this.renderTimeout = setTimeout(() => {
+      if (this.renderTimeout) window.clearTimeout(this.renderTimeout);
+      this.renderTimeout = window.setTimeout(() => {
         this.rootFile = selected.file;
         this.render();
-        requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
           this.centerSelectedNode();
         });
         this.renderTimeout = undefined;
@@ -767,8 +767,8 @@ export class GraphSwitcher extends Modal {
 
   private centerSelectedNodeDebounced() {
     // Debounce centering by 500ms to avoid jarring animation when clicking rapidly
-    if (this.centerTimeout) clearTimeout(this.centerTimeout);
-    this.centerTimeout = setTimeout(() => {
+    if (this.centerTimeout) window.clearTimeout(this.centerTimeout);
+    this.centerTimeout = window.setTimeout(() => {
       this.centerSelectedNode();
     }, 500);
   }
@@ -850,7 +850,7 @@ export class GraphSwitcher extends Modal {
   }
 
   private applyFilter() {
-    if (this.filterTimeout) clearTimeout(this.filterTimeout);
+    if (this.filterTimeout) window.clearTimeout(this.filterTimeout);
 
     // Show filter text
     let filterEl = this.contentEl.querySelector('.bread-trail-filter-indicator') as HTMLElement;
@@ -879,7 +879,7 @@ export class GraphSwitcher extends Modal {
     }
 
     // Clear filter after 3 seconds of no typing
-    this.filterTimeout = setTimeout(() => {
+    this.filterTimeout = window.setTimeout(() => {
       this.clearFilter();
     }, 3000);
   }
