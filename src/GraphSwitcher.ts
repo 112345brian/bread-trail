@@ -783,7 +783,11 @@ export class GraphSwitcher extends Modal {
 
     const viewport = this.stageEl.querySelector('.bread-trail-graph-viewport') as HTMLElement;
     if (viewport) {
-      this.panOffset = { x: centerX - selected.x, y: centerY - selected.y };
+      // Account for zoom: the scaled coordinates need adjustment
+      this.panOffset = {
+        x: centerX - (selected.x * this.zoomLevel),
+        y: centerY - (selected.y * this.zoomLevel)
+      };
       viewport.style.transformOrigin = '0 0';
       viewport.style.transform = `translate(${this.panOffset.x}px, ${this.panOffset.y}px) scale(${this.zoomLevel})`;
     }
