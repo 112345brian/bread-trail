@@ -140,11 +140,30 @@
 .bread-trail-graph-edges line {
   stroke: var(--background-modifier-border-focus);
   stroke-width: 2;
+  transition: stroke 200ms, stroke-width 200ms;
+}
+
+.bread-trail-graph-edge-parent,
+.bread-trail-graph-edge-child {
+  stroke: var(--text-accent);
+  stroke-width: 2.5;
+}
+
+.bread-trail-graph-edge-previous,
+.bread-trail-graph-edge-next {
+  stroke: var(--color-blue);
+  stroke-width: 2.5;
 }
 
 .bread-trail-graph-edge-related,
 .bread-trail-graph-edge-sibling {
   stroke-dasharray: 5 5;
+  opacity: 0.6;
+}
+
+.bread-trail-graph-edge-sequence-child {
+  stroke-dasharray: 3 3;
+  opacity: 0.5;
 }
 
 .bread-trail-graph-node {
@@ -186,11 +205,23 @@
   border-color: color-mix(in srgb, var(--background-modifier-border) 70%, var(--color-blue));
 }
 
+.bread-trail-graph-node-root {
+  border-width: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+.bread-trail-graph-node-faded {
+  opacity: 0.3;
+  filter: grayscale(50%);
+}
+
 .bread-trail-graph-node.is-selected {
   border-color: var(--interactive-accent);
   background: var(--interactive-accent);
   color: var(--text-on-accent);
   box-shadow: 0 0 0 3px var(--background-modifier-border-focus);
+  opacity: 1;
+  filter: none;
 }
 
 .bread-trail-graph-node-icon {
@@ -229,6 +260,25 @@
   font-size: 0.65em;
   font-weight: 600;
   color: var(--color-blue);
+}
+
+.bread-trail-graph-node-filtered {
+  opacity: 0.15;
+}
+
+.bread-trail-filter-indicator {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  padding: 8px 16px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 6px;
+  font-size: 0.9em;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+  display: none;
 }
 
 .bread-trail-graph-legend {
