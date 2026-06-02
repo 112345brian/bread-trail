@@ -13,6 +13,7 @@ export interface BreadTrailSettings {
   graphSingleClickOpens: boolean;
   graphNodeSortOrder: 'alphabetical' | 'importance';
   graphShowPreview: boolean;
+  showStartupNotice: boolean;
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
@@ -29,6 +30,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   graphSingleClickOpens: false,
   graphNodeSortOrder: 'alphabetical',
   graphShowPreview: false,
+  showStartupNotice: true,
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -48,6 +50,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     graphSingleClickOpens: typeof settings.graphSingleClickOpens === 'boolean' ? settings.graphSingleClickOpens : DEFAULT_SETTINGS.graphSingleClickOpens,
     graphNodeSortOrder: settings.graphNodeSortOrder === 'importance' ? 'importance' : 'alphabetical',
     graphShowPreview: typeof settings.graphShowPreview === 'boolean' ? settings.graphShowPreview : DEFAULT_SETTINGS.graphShowPreview,
+    showStartupNotice: typeof settings.showStartupNotice === 'boolean' ? settings.showStartupNotice : DEFAULT_SETTINGS.showStartupNotice,
   };
 }
 
@@ -59,6 +62,23 @@ class BreadTrailSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
+
+    new Setting(containerEl)
+      .setName('Startup')
+      .setHeading();
+
+    new Setting(containerEl)
+      .setName('Show startup notice')
+      .setDesc('Show a notice when Obsidian loads confirming that breadcrumbs was detected. Disable to silence startup messages.')
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.showStartupNotice);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.showStartupNotice = value;
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
+        });
+      });
 
     new Setting(containerEl)
       .setName('Quick switcher traversal')

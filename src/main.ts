@@ -148,11 +148,15 @@ export default class BreadTrail extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       this.bc = getBreadcrumbs(this.app);
       if (!this.bc) {
-        new Notice('Bread trail: Breadcrumbs plugin not found.');
+        if (this.settings.showStartupNotice) {
+          new Notice('Bread trail: Breadcrumbs plugin not found.');
+        }
         new BreadcrumbsMissingModal(this.app).open();
         return;
       }
-      new Notice('Bread trail loaded — breadcrumbs detected.');
+      if (this.settings.showStartupNotice) {
+        new Notice('Bread trail loaded — breadcrumbs detected.');
+      }
     });
 
     this.addCommand({
