@@ -143,4 +143,4 @@ Like this plugin? I make a few others for Obsidian:
 - [**Properties First**](https://github.com/112345brian/obsidian-properties-first) — move properties above the inline title
 - [**Return Headings**](https://github.com/112345brian/return-headings) — heading-return navigation markers
 
-Want to install them all at once? Check out [**obsidian-setup**](https://github.com/112345brian/obsidian-setup).
+Want to install them all at once? Check out [**bripeys-extremely-opinionated-plugin-suite**](https://github.com/112345brian/bripeys-extremely-opinionated-plugin-suite).
