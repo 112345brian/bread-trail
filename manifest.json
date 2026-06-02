@@ -1,7 +1,7 @@
 {
 	"id": "bread-trail",
 	"name": "Bread Trail",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"minAppVersion": "1.4.4",
 	"description": "Navigate and edit your Breadcrumbs graph — view hierarchies, reorder via drag-drop, quick-switch between related notes.",
 	"author": "112345brian",
