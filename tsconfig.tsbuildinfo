@@ -1,0 +1,1 @@
+{"root":["./eslint.config.mts","./scripts/build-compile-typescript.ts","./scripts/build-compile.ts","./scripts/build.ts","./scripts/dev.ts","./scripts/eslint-config.ts","./scripts/lint-fix.ts","./scripts/lint.ts","./scripts/version.ts","./src/graphswitcher.ts","./src/outlinemodal.ts","./src/quickswitcher.ts","./src/main.ts","./src/settings.ts"],"version":"5.9.3"}

@@ -14,6 +14,7 @@ export interface BreadTrailSettings {
   graphNodeSortOrder: 'alphabetical' | 'importance';
   graphShowPreview: boolean;
   showStartupNotice: boolean;
+  pathColors: Record<string, string>;
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
@@ -31,6 +32,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   graphNodeSortOrder: 'alphabetical',
   graphShowPreview: false,
   showStartupNotice: true,
+  pathColors: {},
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -51,6 +53,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     graphNodeSortOrder: settings.graphNodeSortOrder === 'importance' ? 'importance' : 'alphabetical',
     graphShowPreview: typeof settings.graphShowPreview === 'boolean' ? settings.graphShowPreview : DEFAULT_SETTINGS.graphShowPreview,
     showStartupNotice: typeof settings.showStartupNotice === 'boolean' ? settings.showStartupNotice : DEFAULT_SETTINGS.showStartupNotice,
+    pathColors: settings.pathColors && typeof settings.pathColors === 'object' ? settings.pathColors : {},
   };
 }
 

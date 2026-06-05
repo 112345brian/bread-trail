@@ -369,7 +369,6 @@
   font-weight: 500;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   z-index: 100;
-  display: none;
 }
 
 .bread-trail-graph-node-hidden-edge {
@@ -451,4 +450,87 @@
   font-size: 0.75em;
   text-align: center;
   opacity: 0.7;
+}
+
+/* ── Path selector ─────────────────────────────────────────── */
+.bread-trail-path-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+}
+
+.bread-trail-path-selector-label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.bread-trail-path-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bread-trail-path-chip {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: 500;
+  border: 1.5px solid color-mix(in srgb, var(--path-color, var(--text-muted)) 50%, transparent);
+  background: color-mix(in srgb, var(--path-color, var(--background-modifier-hover)) 12%, var(--background-primary));
+  color: var(--path-color, var(--text-muted));
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, opacity 120ms;
+}
+
+.bread-trail-path-chip:hover {
+  background: color-mix(in srgb, var(--path-color, var(--interactive-accent)) 25%, var(--background-primary));
+}
+
+.bread-trail-path-chip.is-active {
+  background: color-mix(in srgb, var(--path-color, var(--interactive-accent)) 90%, transparent);
+  border-color: var(--path-color, var(--interactive-accent));
+  color: var(--text-on-accent);
+}
+
+.bread-trail-path-chip-all {
+  --path-color: var(--text-muted);
+}
+
+/* Inline path badge on graph nodes */
+.bread-trail-path-chip-inline {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 0.65em;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--path-color, var(--color-blue)) 20%, transparent);
+  color: var(--path-color, var(--color-blue));
+  border: 1px solid color-mix(in srgb, var(--path-color, var(--color-blue)) 40%, transparent);
+  margin-top: 2px;
+  align-self: flex-start;
+}
+
+/* Path-colored edges use stroke from --path-color */
+.bread-trail-graph-edge-path {
+  stroke: var(--path-color, var(--color-blue));
+}
+
+/* Nodes not on the active path filter */
+.bread-trail-graph-node-path-filtered {
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+/* Previous/next nodes with a path color tint */
+.bread-trail-graph-node-previous[data-path-name],
+.bread-trail-graph-node-next[data-path-name] {
+  background: color-mix(in srgb, var(--background-primary) 80%, var(--path-color, var(--color-blue)));
+  border-color: color-mix(in srgb, var(--background-modifier-border) 60%, var(--path-color, var(--color-blue)));
 }
