@@ -1,7 +1,9 @@
-import { App, Modal, Notice, Plugin, TFile } from 'obsidian';
+import { App, MarkdownPostProcessorContext, MarkdownRenderChild, Modal, Notice, Plugin, TFile, setIcon } from 'obsidian';
 import { OutlineModal } from './OutlineModal';
 import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
 import { GraphSwitcher } from './GraphSwitcher';
+import { Validator } from './Validator';
+import { ValidationModal } from './ValidationModal';
 import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
 
@@ -232,6 +234,18 @@ export default class BreadTrail extends Plugin {
     });
 
     this.addCommand({
+      id: 'validate',
+      name: 'Validate breadcrumbs — show vault report',
+      callback: () => {
+        new ValidationModal(this.app, this.settings).open();
+      },
+    });
+
+    this.registerMarkdownPostProcessor((el, ctx) => {
+      this.injectValidationWarning(el, ctx);
+    });
+
+    this.addCommand({
       id: 'graph-switch',
       name: 'Show breadcrumb graph switcher',
       checkCallback: (checking) => {
@@ -250,7 +264,58 @@ export default class BreadTrail extends Plugin {
     });
   }
 
+  private injectValidationWarning(el: HTMLElement, ctx: MarkdownPostProcessorContext) {
+    // Only run on the first section of a document
+    const sectionInfo = ctx.getSectionInfo(el);
+    if (sectionInfo && sectionInfo.lineStart !== 0) return;
+
+    const filePath = ctx.sourcePath;
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!(file instanceof TFile)) return;
+
+    // Skip if no validation rules are configured
+    if (this.settings.sequenceFields.length === 0) return;
+
+    const violations = new Validator(this.app, this.settings).validateFile(file);
+    if (violations.length === 0) return;
+
+    const banner = el.createDiv('bread-trail-validation-banner');
+    const child = new ValidationBanner(banner, violations, filePath);
+    ctx.addChild(child);
+
+    // Prepend so the banner appears before the section content
+    el.prepend(banner);
+  }
+
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+}
+
+/** Lifecycle-managed inline validation banner for reading mode. */
+class ValidationBanner extends MarkdownRenderChild {
+  constructor(
+    containerEl: HTMLElement,
+    private violations: import('./Validator').ValidationViolation[],
+    private filePath: string,
+  ) {
+    super(containerEl);
+  }
+
+  onload() {
+    const hasError = this.violations.some((v) => v.severity === 'error');
+    this.containerEl.addClass(hasError ? 'bread-trail-validation-banner-error' : 'bread-trail-validation-banner-warning');
+
+    const headerEl = this.containerEl.createDiv('bread-trail-validation-banner-header');
+    setIcon(headerEl.createSpan('bread-trail-validation-banner-icon'), hasError ? 'alert-circle' : 'alert-triangle');
+    headerEl.createSpan({
+      text: `Breadcrumb ${hasError ? 'error' : 'warning'}${this.violations.length > 1 ? 's' : ''} (${this.violations.length})`,
+      cls: 'bread-trail-validation-banner-title',
+    });
+
+    const listEl = this.containerEl.createEl('ul', { cls: 'bread-trail-validation-banner-list' });
+    for (const v of this.violations) {
+      listEl.createEl('li', { text: v.message, cls: `bread-trail-validation-banner-item-${v.severity}` });
+    }
   }
 }

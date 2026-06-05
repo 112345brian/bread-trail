@@ -15,6 +15,9 @@ export interface BreadTrailSettings {
   graphShowPreview: boolean;
   showStartupNotice: boolean;
   pathColors: Record<string, string>;
+  /** Field names that act as up-type edges AND define a path namespace.
+   *  e.g. "journal" means: notes with `journal: [[...]]` must have next.journal or prev.journal. */
+  sequenceFields: string[];
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
@@ -33,6 +36,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   graphShowPreview: false,
   showStartupNotice: true,
   pathColors: {},
+  sequenceFields: [],
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -54,6 +58,9 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     graphShowPreview: typeof settings.graphShowPreview === 'boolean' ? settings.graphShowPreview : DEFAULT_SETTINGS.graphShowPreview,
     showStartupNotice: typeof settings.showStartupNotice === 'boolean' ? settings.showStartupNotice : DEFAULT_SETTINGS.showStartupNotice,
     pathColors: settings.pathColors && typeof settings.pathColors === 'object' ? settings.pathColors : {},
+    sequenceFields: Array.isArray(settings.sequenceFields)
+      ? (settings.sequenceFields as unknown[]).filter((f): f is string => typeof f === 'string' && f.trim().length > 0)
+      : [],
   };
 }
 
@@ -170,6 +177,27 @@ class BreadTrailSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.graphSingleClickOpens);
         toggle.onChange(async (value) => {
           this.plugin.settings.graphSingleClickOpens = value;
+          await this.plugin.saveSettings().catch((err) => {
+            console.error('Failed to save Bread Trail settings:', err);
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName('Validation')
+      .setHeading();
+
+    new Setting(containerEl)
+      .setName('Sequence fields')
+      .setDesc('Comma-separated list of frontmatter field names that act as parent links AND define a path namespace. A note using field "journal" as a parent link must also have next.journal or prev.journal. Leave blank to skip this check.')
+      .addText((text) => {
+        text.setPlaceholder('journal, book, project');
+        text.setValue(this.plugin.settings.sequenceFields.join(', '));
+        text.onChange(async (value) => {
+          this.plugin.settings.sequenceFields = value
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
           await this.plugin.saveSettings().catch((err) => {
             console.error('Failed to save Bread Trail settings:', err);
           });
