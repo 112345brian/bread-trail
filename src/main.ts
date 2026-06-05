@@ -4,6 +4,8 @@ import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
 import { GraphSwitcher } from './GraphSwitcher';
 import { Validator } from './Validator';
 import { ValidationModal } from './ValidationModal';
+import { SequenceModal, SequenceAllModal } from './SequenceModal';
+import { Sequencer, parseLinkChildrenConfig, findAllConfiguredParents } from './Sequencer';
 import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
 
@@ -141,6 +143,7 @@ class TrailModal extends Modal {
 export default class BreadTrail extends Plugin {
   private bc: BreadcrumbsPlugin | null = null;
   settings: BreadTrailSettings = DEFAULT_SETTINGS;
+  private autoSeqDebounce = new Map<string, ReturnType<typeof setTimeout>>();
 
   async onload() {
     this.settings = normalizeSettings((await this.loadData()) as Partial<BreadTrailSettings> | null ?? {});
@@ -246,6 +249,39 @@ export default class BreadTrail extends Plugin {
     });
 
     this.addCommand({
+      id: 'sequence-children',
+      name: 'Sequence children of current note',
+      checkCallback: (checking) => {
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== 'md') return false;
+        const config = parseLinkChildrenConfig(this.app, file);
+        if (!config) return false;
+        if (checking) return true;
+
+        if (!this.bc) { new BreadcrumbsMissingModal(this.app).open(); return true; }
+        new SequenceModal(this.app, file, this.bc).open();
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'sequence-all',
+      name: 'Sequence all configured parents',
+      callback: () => {
+        if (!this.bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
+        new SequenceAllModal(this.app, this.bc).open();
+      },
+    });
+
+    // Auto-sequencing: re-run whenever a file changes and its parent(s) have mode: auto
+    this.registerEvent(
+      this.app.metadataCache.on('changed', (file) => {
+        if (!this.bc) return;
+        this.handleAutoSequence(file);
+      }),
+    );
+
+    this.addCommand({
       id: 'graph-switch',
       name: 'Show breadcrumb graph switcher',
       checkCallback: (checking) => {
@@ -294,6 +330,51 @@ export default class BreadTrail extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  /** Debounced auto-sequencer: fires 2s after the last metadata change on a file.
+   *  Checks whether any parent of the changed file has mode: auto, and if so re-sequences. */
+  private handleAutoSequence(changedFile: TFile) {
+    if (!this.bc) return;
+
+    // Collect parents of the changed file that have mode: auto
+    const autoParents = findAllConfiguredParents(this.app).filter(({ config }) => config.mode === 'auto');
+    if (autoParents.length === 0) return;
+
+    // For each auto parent, check if changedFile is one of its children
+    const bc = this.bc;
+    for (const { file: parent, config } of autoParents) {
+      const edges = bc.graph.get_outgoing_edges(parent.path).to_array();
+      const isChild = edges.some((edge) => {
+        const edgeType = edge.edge_type ?? '';
+        if (edgeType !== 'down' && edgeType !== 'child') return false;
+        const targetPath = edge.target_path?.(bc.graph) ?? edge.target;
+        return targetPath === changedFile.path;
+      });
+      if (!isChild) continue;
+
+      // Debounce per parent — wait 2s after last change before re-sequencing
+      const existing = this.autoSeqDebounce.get(parent.path);
+      if (existing) clearTimeout(existing);
+
+      const timer = setTimeout(async () => {
+        this.autoSeqDebounce.delete(parent.path);
+        try {
+          const sequencer = new Sequencer(this.app, bc);
+          const plan = sequencer.plan(parent, config);
+          const changed = plan.results.reduce(
+            (sum, r) => sum + r.changes.filter((c) => c.kind !== 'no-change').length, 0,
+          );
+          if (changed === 0) return;
+          await sequencer.apply(plan);
+          new Notice(`Auto-sequenced "${parent.basename}" — ${changed} link${changed !== 1 ? 's' : ''} updated.`);
+        } catch (err) {
+          console.error('Bread Trail auto-sequence error:', err);
+        }
+      }, 2000);
+
+      this.autoSeqDebounce.set(parent.path, timer);
+    }
   }
 }
 
