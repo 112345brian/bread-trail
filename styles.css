@@ -508,6 +508,10 @@
   max-width: none;
 }
 
+.bread-trail-validation-modal {
+  color: var(--text-normal);
+}
+
 .bread-trail-validation-ok {
   display: flex;
   align-items: center;
@@ -527,11 +531,10 @@
 .bread-trail-validation-summary {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 0 16px;
+  gap: 10px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
   border-bottom: 1px solid var(--background-modifier-border);
-  margin-bottom: 16px;
-  font-size: 0.95em;
   flex-wrap: wrap;
 }
 
@@ -539,77 +542,85 @@
 .bread-trail-validation-count-warning {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-weight: 600;
-  padding: 2px 8px;
+  font-size: 0.9em;
+  padding: 3px 10px;
   border-radius: 12px;
 }
 
 .bread-trail-validation-count-error {
   color: var(--color-red);
-  background: color-mix(in srgb, var(--color-red) 12%, transparent);
+  background: color-mix(in srgb, var(--color-red) 15%, transparent);
 }
 
 .bread-trail-validation-count-warning {
   color: var(--color-orange);
-  background: color-mix(in srgb, var(--color-orange) 12%, transparent);
+  background: color-mix(in srgb, var(--color-orange) 15%, transparent);
 }
 
-.bread-trail-validation-count-error > span:first-child,
-.bread-trail-validation-count-warning > span:first-child {
+.bread-trail-validation-count-icon {
   display: flex;
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
 .bread-trail-validation-summary-files {
   color: var(--text-muted);
+  font-size: 0.9em;
 }
 
 .bread-trail-validation-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-height: 60vh;
+  gap: 2px;
   overflow-y: auto;
 }
 
+/* Each file card */
 .bread-trail-validation-file {
-  border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  margin-bottom: 8px;
 }
 
+/* File header row — clickable */
 .bread-trail-validation-file-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  background: var(--background-secondary);
+  padding: 7px 12px;
+  cursor: default;
   border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-modifier-hover);
 }
 
-.bread-trail-validation-file-icon {
+.bread-trail-validation-file-severity {
   display: flex;
-  width: 16px;
-  height: 16px;
-  color: var(--color-orange);
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
+}
+
+.bread-trail-validation-file-severity.mod-error {
+  color: var(--color-red);
+}
+
+.bread-trail-validation-file-severity.mod-warning {
+  color: var(--color-orange);
 }
 
 .bread-trail-validation-file-name {
   flex: 1;
-  text-align: left;
   font-size: 0.85em;
   font-weight: 500;
   color: var(--text-accent);
-  background: none;
-  border: none;
   cursor: pointer;
-  padding: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .bread-trail-validation-file-name:hover {
@@ -618,73 +629,67 @@
 
 .bread-trail-validation-file-badge {
   display: inline-flex;
-  min-width: 20px;
-  height: 20px;
+  min-width: 18px;
+  height: 18px;
   align-items: center;
   justify-content: center;
-  padding: 0 5px;
-  border-radius: 10px;
+  padding: 0 4px;
+  border-radius: 9px;
   background: var(--background-modifier-border);
   color: var(--text-muted);
-  font-size: 0.75em;
-  font-weight: 600;
+  font-size: 0.72em;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
-.bread-trail-validation-violations {
-  padding: 6px 0;
-}
-
+/* Individual violation rows */
 .bread-trail-validation-row {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 6px 12px;
+  flex-direction: column;
+  padding: 6px 12px 7px 14px;
+  border-left: 3px solid transparent;
 }
 
 .bread-trail-validation-row + .bread-trail-validation-row {
   border-top: 1px solid var(--background-modifier-border);
 }
 
-.bread-trail-validation-row-icon {
-  display: flex;
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
-  flex-shrink: 0;
+.bread-trail-validation-row-error {
+  border-left-color: var(--color-red);
 }
 
-.bread-trail-validation-row-error .bread-trail-validation-row-icon {
+.bread-trail-validation-row-warning {
+  border-left-color: var(--color-orange);
+}
+
+.bread-trail-validation-row-label {
+  font-size: 0.75em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.bread-trail-validation-row-error .bread-trail-validation-row-label {
   color: var(--color-red);
 }
 
-.bread-trail-validation-row-warning .bread-trail-validation-row-icon {
+.bread-trail-validation-row-warning .bread-trail-validation-row-label {
   color: var(--color-orange);
 }
 
-.bread-trail-validation-row-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.bread-trail-validation-rule-label {
-  font-size: 0.8em;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.bread-trail-validation-rule-context {
+.bread-trail-validation-row-context {
   font-weight: 400;
   text-transform: none;
   letter-spacing: 0;
+  opacity: 0.8;
 }
 
-.bread-trail-validation-message {
+.bread-trail-validation-row-message {
   font-size: 0.875em;
   color: var(--text-normal);
-  margin-top: 2px;
+  line-height: 1.4;
   word-break: break-word;
 }
 

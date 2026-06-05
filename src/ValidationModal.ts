@@ -36,16 +36,16 @@ export class ValidationModal extends Modal {
     const summaryEl = this.contentEl.createDiv('bread-trail-validation-summary');
     if (totalErrors > 0) {
       const errEl = summaryEl.createSpan('bread-trail-validation-count-error');
-      setIcon(errEl.createSpan(), 'alert-circle');
-      errEl.createSpan({ text: ` ${totalErrors} error${totalErrors !== 1 ? 's' : ''}` });
+      setIcon(errEl.createSpan('bread-trail-validation-count-icon'), 'alert-circle');
+      errEl.createSpan({ text: `${totalErrors} error${totalErrors !== 1 ? 's' : ''}` });
     }
     if (totalWarnings > 0) {
       const warnEl = summaryEl.createSpan('bread-trail-validation-count-warning');
-      setIcon(warnEl.createSpan(), 'alert-triangle');
-      warnEl.createSpan({ text: ` ${totalWarnings} warning${totalWarnings !== 1 ? 's' : ''}` });
+      setIcon(warnEl.createSpan('bread-trail-validation-count-icon'), 'alert-triangle');
+      warnEl.createSpan({ text: `${totalWarnings} warning${totalWarnings !== 1 ? 's' : ''}` });
     }
     summaryEl.createSpan({
-      text: ` across ${results.size} file${results.size !== 1 ? 's' : ''}`,
+      text: `across ${results.size} file${results.size !== 1 ? 's' : ''}`,
       cls: 'bread-trail-validation-summary-files',
     });
 
@@ -59,19 +59,17 @@ export class ValidationModal extends Modal {
     const listEl = this.contentEl.createDiv('bread-trail-validation-list');
 
     for (const [filePath, violations] of sortedEntries) {
-      const fileEl = listEl.createDiv('bread-trail-validation-file');
       const hasError = violations.some((v) => v.severity === 'error');
+      const fileEl = listEl.createDiv('bread-trail-validation-file');
 
-      // File header row
+      // Clickable file header
       const headerEl = fileEl.createDiv('bread-trail-validation-file-header');
-      const iconEl = headerEl.createSpan('bread-trail-validation-file-icon');
-      if (hasError) iconEl.addClass('is-error');
+      const iconEl = headerEl.createSpan('bread-trail-validation-file-severity');
       setIcon(iconEl, hasError ? 'alert-circle' : 'alert-triangle');
+      iconEl.addClass(hasError ? 'mod-error' : 'mod-warning');
 
-      const nameEl = headerEl.createEl('button', {
-        text: filePath,
-        cls: 'bread-trail-validation-file-name',
-      });
+      const nameEl = headerEl.createDiv('bread-trail-validation-file-name');
+      nameEl.setText(filePath);
       nameEl.addEventListener('click', () => {
         const tfile = this.app.vault.getAbstractFileByPath(filePath);
         if (tfile instanceof TFile) {
@@ -86,22 +84,17 @@ export class ValidationModal extends Modal {
       });
 
       // Violation rows
-      const violsEl = fileEl.createDiv('bread-trail-validation-violations');
       for (const v of violations) {
-        const rowEl = violsEl.createDiv(`bread-trail-validation-row bread-trail-validation-row-${v.severity}`);
+        const rowEl = fileEl.createDiv('bread-trail-validation-row');
+        rowEl.addClass(`bread-trail-validation-row-${v.severity}`);
 
-        const iconRowEl = rowEl.createSpan('bread-trail-validation-row-icon');
-        setIcon(iconRowEl, v.severity === 'error' ? 'alert-circle' : 'alert-triangle');
-
-        const textEl = rowEl.createDiv('bread-trail-validation-row-text');
-        const labelEl = textEl.createSpan({
-          text: RULE_LABELS[v.ruleId] ?? v.ruleId,
-          cls: 'bread-trail-validation-rule-label',
-        });
+        const labelEl = rowEl.createSpan('bread-trail-validation-row-label');
+        labelEl.setText(RULE_LABELS[v.ruleId] ?? v.ruleId);
         if (v.context) {
-          labelEl.createSpan({ text: ` · ${v.context}`, cls: 'bread-trail-validation-rule-context' });
+          labelEl.createSpan({ text: ` · ${v.context}`, cls: 'bread-trail-validation-row-context' });
         }
-        textEl.createDiv({ text: v.message, cls: 'bread-trail-validation-message' });
+
+        rowEl.createDiv({ text: v.message, cls: 'bread-trail-validation-row-message' });
       }
     }
   }
