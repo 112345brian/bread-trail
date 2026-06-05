@@ -12,6 +12,8 @@ export interface LinkChildrenConfig {
   path: string;
   /** When true, stale next.X / prev.X links are removed. */
   removeStale: boolean;
+  /** 'flat' writes `next.journal: [[X]]`; 'nested' writes `next: { journal: [[X]] }`. */
+  format: 'flat' | 'nested';
 }
 
 // ── Per-child diff ────────────────────────────────────────────────────────────
@@ -75,8 +77,9 @@ export function parseLinkChildrenConfig(
     ? raw['path'].trim()
     : toPathName(file.basename);
   const removeStale = typeof raw['remove-stale'] === 'boolean' ? raw['remove-stale'] : false;
+  const format = raw['format'] === 'nested' ? 'nested' : 'flat';
 
-  return { frontmatter, mode, path, removeStale };
+  return { frontmatter, mode, path, removeStale, format };
 }
 
 /** Return every file in the vault that has `bread-trail.link-children` configured. */
@@ -100,6 +103,64 @@ function resolveField(fm: Record<string, unknown>, fields: string[]): string | n
     }
   }
   return null;
+}
+
+// ── Flat/nested frontmatter helpers ──────────────────────────────────────────
+
+/** Read a dotted key from frontmatter, checking both flat (`next.journal`) and
+ *  nested (`next: { journal: ... }`) forms. Returns null if absent. */
+function readFmKey(fm: Record<string, unknown>, key: string): string | null {
+  // Flat form: fm['next.journal']
+  if (fm[key] !== undefined && fm[key] !== null) return String(fm[key]);
+
+  // Nested form: fm['next']['journal']
+  const dot = key.indexOf('.');
+  if (dot !== -1) {
+    const prefix = key.slice(0, dot);
+    const subpath = key.slice(dot + 1);
+    const nested = fm[prefix];
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      const val = (nested as Record<string, unknown>)[subpath];
+      if (val !== undefined && val !== null) return String(val);
+    }
+  }
+  return null;
+}
+
+/** Write a dotted key into a processFrontMatter object in the target format. */
+function writeFmKey(fm: Record<string, unknown>, key: string, value: string, format: 'flat' | 'nested') {
+  if (format === 'flat') {
+    fm[key] = value;
+    return;
+  }
+  // Nested: ensure prefix object exists, then set sub-key
+  const dot = key.indexOf('.');
+  if (dot === -1) { fm[key] = value; return; }
+  const prefix = key.slice(0, dot);
+  const subpath = key.slice(dot + 1);
+  if (!fm[prefix] || typeof fm[prefix] !== 'object' || Array.isArray(fm[prefix])) {
+    fm[prefix] = {};
+  }
+  (fm[prefix] as Record<string, unknown>)[subpath] = value;
+}
+
+/** Delete a dotted key from a processFrontMatter object, handling both forms. */
+function deleteFmKey(fm: Record<string, unknown>, key: string) {
+  // Delete flat form
+  if (fm[key] !== undefined) delete fm[key];
+
+  // Delete from nested form
+  const dot = key.indexOf('.');
+  if (dot !== -1) {
+    const prefix = key.slice(0, dot);
+    const subpath = key.slice(dot + 1);
+    const nested = fm[prefix];
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      delete (nested as Record<string, unknown>)[subpath];
+      // Remove the parent key if now empty
+      if (Object.keys(nested as object).length === 0) delete fm[prefix];
+    }
+  }
 }
 
 // ── Core sequencer ────────────────────────────────────────────────────────────
@@ -174,6 +235,7 @@ export class Sequencer {
 
   /** Execute a plan — writes all non-no-change diffs to frontmatter. */
   async apply(plan: SequencePlan): Promise<void> {
+    const format = plan.config.format;
     for (const result of plan.results) {
       const writes = result.changes.filter((c) => c.kind !== 'no-change');
       if (writes.length === 0) continue;
@@ -181,9 +243,9 @@ export class Sequencer {
       await this.app.fileManager.processFrontMatter(result.file, (fm) => {
         for (const change of writes) {
           if (change.kind === 'add') {
-            fm[change.key] = change.value;
+            writeFmKey(fm, change.key, change.value, format);
           } else if (change.kind === 'remove') {
-            delete fm[change.key];
+            deleteFmKey(fm, change.key);
           }
         }
       });
@@ -211,16 +273,14 @@ export class Sequencer {
     return children;
   }
 
-  /** Compute the diff for a single key. */
+  /** Compute the diff for a single key, reading both flat and nested forms. */
   private diffKey(
     fm: Record<string, unknown>,
     key: string,
     desired: string | null,
     removeStale: boolean,
   ): FrontmatterChange[] {
-    const current = fm[key] !== undefined && fm[key] !== null
-      ? String(fm[key])
-      : null;
+    const current = readFmKey(fm, key);
 
     if (desired === null) {
       // We want no link here
