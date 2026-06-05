@@ -1,5 +1,6 @@
 import { App, TFile } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
+import type { BreadTrailSettings } from './settings';
 
 // ── Config types (parsed from a parent note's frontmatter) ───────────────────
 
@@ -125,18 +126,22 @@ function readFmKey(fm: Record<string, unknown>, key: string): string | null {
 }
 
 /** Detect whether a note already uses nested form for a dotted key.
- *  Falls back to flat if no existing link is found either way. */
-function detectFormat(fm: Record<string, unknown>, key: string): 'flat' | 'nested' {
+ *  If the note has no existing link, falls back to the global default. */
+function detectFormat(fm: Record<string, unknown>, key: string, globalDefault: 'flat' | 'nested'): 'flat' | 'nested' {
   const dot = key.indexOf('.');
   if (dot === -1) return 'flat';
   const prefix = key.slice(0, dot);
   const subpath = key.slice(dot + 1);
+  // Existing nested form → preserve nested
   const nested = fm[prefix];
   if (nested && typeof nested === 'object' && !Array.isArray(nested) &&
       (nested as Record<string, unknown>)[subpath] !== undefined) {
     return 'nested';
   }
-  return 'flat';
+  // Existing flat form → preserve flat
+  if (fm[key] !== undefined) return 'flat';
+  // No existing link → use global setting
+  return globalDefault;
 }
 
 /** Write a dotted key into a processFrontMatter object in the target format. */
@@ -181,6 +186,7 @@ export class Sequencer {
   constructor(
     private app: App,
     private bc: BreadcrumbsPlugin,
+    private settings: Pick<BreadTrailSettings, 'sequenceLinkFormat'>,
   ) {}
 
   /** Build a full plan for a single parent without writing anything. */
@@ -256,7 +262,7 @@ export class Sequencer {
       await this.app.fileManager.processFrontMatter(result.file, (fm) => {
         for (const change of writes) {
           if (change.kind === 'add') {
-            const format = detectFormat(fm, change.key);
+            const format = detectFormat(fm, change.key, this.settings.sequenceLinkFormat);
             writeFmKey(fm, change.key, change.value, format);
           } else if (change.kind === 'remove') {
             deleteFmKey(fm, change.key);

@@ -45,6 +45,9 @@ export interface BreadTrailSettings {
   showStartupNotice: boolean;
   pathColors: Record<string, string>;
   validationRules: ValidationRules;
+  /** Format used when writing NEW sequence links. 'flat' = next.journal: [[X]];
+   *  'nested' = next: { journal: [[X]] } (requires Nested Properties plugin). */
+  sequenceLinkFormat: 'flat' | 'nested';
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
@@ -81,6 +84,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   showStartupNotice: true,
   pathColors: {},
   validationRules: DEFAULT_VALIDATION_RULES,
+  sequenceLinkFormat: 'flat',
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -146,6 +150,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     showStartupNotice: typeof settings.showStartupNotice === 'boolean' ? settings.showStartupNotice : DEFAULT_SETTINGS.showStartupNotice,
     pathColors: settings.pathColors && typeof settings.pathColors === 'object' ? settings.pathColors : {},
     validationRules: normalizeValidationRules(settings.validationRules),
+    sequenceLinkFormat: settings.sequenceLinkFormat === 'nested' ? 'nested' : 'flat',
   };
 }
 
@@ -263,6 +268,23 @@ class BreadTrailSettingTab extends PluginSettingTab {
         dropdown.setValue(this.plugin.settings.graphNodeSortOrder);
         dropdown.onChange(async (value) => {
           this.plugin.settings.graphNodeSortOrder = value as 'alphabetical' | 'importance';
+          await this.save();
+        });
+      });
+
+    // ── Auto-sequencing ───────────────────────────────────────────────────
+
+    new Setting(containerEl)
+      .setName('Auto-sequencing')
+      .setHeading();
+
+    new Setting(containerEl)
+      .setName('Write sequence links in nested YAML form')
+      .setDesc('When enabled, new links are written as nested objects (next: { journal: [[X]] }) instead of flat keys (next.journal: [[X]]). Requires the Nested Properties plugin to be readable by Obsidian. Existing links always preserve their current form regardless of this setting.')
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.sequenceLinkFormat === 'nested');
+        toggle.onChange(async (value) => {
+          this.plugin.settings.sequenceLinkFormat = value ? 'nested' : 'flat';
           await this.save();
         });
       });

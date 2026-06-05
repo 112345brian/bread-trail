@@ -1,5 +1,6 @@
 import { App, Modal, Notice, TFile, setIcon } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
+import type { BreadTrailSettings } from './settings';
 import {
   Sequencer,
   parseLinkChildrenConfig,
@@ -20,9 +21,10 @@ export class SequenceModal extends Modal {
     app: App,
     private parent: TFile,
     private bc: BreadcrumbsPlugin,
+    private settings: BreadTrailSettings,
   ) {
     super(app);
-    this.sequencer = new Sequencer(app, bc);
+    this.sequencer = new Sequencer(app, bc, settings);
   }
 
   onOpen() {
@@ -141,9 +143,10 @@ export class SequenceAllModal extends Modal {
   constructor(
     app: App,
     private bc: BreadcrumbsPlugin,
+    private settings: BreadTrailSettings,
   ) {
     super(app);
-    this.sequencer = new Sequencer(app, bc);
+    this.sequencer = new Sequencer(app, bc, settings);
   }
 
   onOpen() {

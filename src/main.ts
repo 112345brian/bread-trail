@@ -259,7 +259,7 @@ export default class BreadTrail extends Plugin {
         if (checking) return true;
 
         if (!this.bc) { new BreadcrumbsMissingModal(this.app).open(); return true; }
-        new SequenceModal(this.app, file, this.bc).open();
+        new SequenceModal(this.app, file, this.bc, this.settings).open();
         return true;
       },
     });
@@ -269,7 +269,7 @@ export default class BreadTrail extends Plugin {
       name: 'Sequence all configured parents',
       callback: () => {
         if (!this.bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
-        new SequenceAllModal(this.app, this.bc).open();
+        new SequenceAllModal(this.app, this.bc, this.settings).open();
       },
     });
 
@@ -360,7 +360,7 @@ export default class BreadTrail extends Plugin {
       const timer = setTimeout(async () => {
         this.autoSeqDebounce.delete(parent.path);
         try {
-          const sequencer = new Sequencer(this.app, bc);
+          const sequencer = new Sequencer(this.app, bc, this.settings);
           const plan = sequencer.plan(parent, config);
           const changed = plan.results.reduce(
             (sum, r) => sum + r.changes.filter((c) => c.kind !== 'no-change').length, 0,
