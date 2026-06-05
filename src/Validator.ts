@@ -110,7 +110,8 @@ export class Validator {
   // ── Rule: missing reciprocal ──────────────────────────────────────────────
   //
   // If A has `next.X: [[B]]`, B must have `prev.X: [[A]]`.
-  // The fix writes the missing key into the target's frontmatter.
+  // When both notes share a common `up` parent, the fix also offers to rename
+  // the path to the parent's normalised name (e.g. prev.0 → prev.hypothesis-test).
 
   private checkMissingReciprocal(file: TFile, violations: ValidationViolation[]) {
     const { severity, namedPathsOnly } = this.settings.validationRules.missingReciprocal;
@@ -141,26 +142,107 @@ export class Validator {
       });
 
       if (!hasReciprocal) {
-        // Capture locals for the fix closure
         const fixTarget = target;
-        const fixKey = expectedKey;
-        const fixValue = `[[${file.basename}]]`;
+        const sourceFile = file;
+
+        // Check if both notes share a common `up` parent and the current
+        // sub-path doesn't already match the parent name.
+        const sharedParentName = this.findSharedParentName(sourceFile, fixTarget);
+        const suggestedSubpath = sharedParentName ?? subpath;
+        const useRename = !!sharedParentName && subpath !== sharedParentName;
+
+        const finalSourceKey = `${direction}.${suggestedSubpath}`;
+        const finalRecipKey = `${recipDir}.${suggestedSubpath}`;
+        const recipValue = `[[${sourceFile.basename}]]`;
+
+        let message: string;
+        let fixLabel: string;
+
+        if (useRename) {
+          message = `\`${link.key}: [[${fixTarget.basename}]]\` — no \`${expectedKey}\` in that note. Both notes share parent "${sharedParentName}" — consider renaming to \`${finalSourceKey}\` / \`${finalRecipKey}\`.`;
+          fixLabel = `Rename to \`${finalSourceKey}\` and add \`${finalRecipKey}\` in ${fixTarget.basename}`;
+        } else {
+          message = `\`${link.key}: [[${fixTarget.basename}]]\` — that note has no \`${expectedKey}\` pointing back.`;
+          fixLabel = `Add \`${finalRecipKey}: ${recipValue}\` to ${fixTarget.basename}`;
+        }
 
         violations.push({
           file,
           severity,
           ruleId: 'missing-reciprocal',
-          message: `\`${link.key}: [[${target.basename}]]\` — that note has no \`${expectedKey}\` pointing back.`,
+          message,
           context: link.key,
-          fixLabel: `Add \`${fixKey}: ${fixValue}\` to ${fixTarget.basename}`,
+          fixLabel,
           fix: async () => {
-            await this.app.fileManager.processFrontMatter(fixTarget, (fm) => {
-              fm[fixKey] = fixValue;
-            });
+            if (useRename) {
+              // Rename the key in the source file and add the reciprocal in the target
+              const oldKey = link.key;
+              const oldValue = `[[${fixTarget.basename}]]`;
+              await this.app.fileManager.processFrontMatter(sourceFile, (fm) => {
+                if (oldKey in fm) delete fm[oldKey];
+                fm[finalSourceKey] = oldValue;
+              });
+              await this.app.fileManager.processFrontMatter(fixTarget, (fm) => {
+                fm[finalRecipKey] = recipValue;
+              });
+            } else {
+              // Just add the missing reciprocal with the existing key
+              await this.app.fileManager.processFrontMatter(fixTarget, (fm) => {
+                fm[finalRecipKey] = recipValue;
+              });
+            }
           },
         });
       }
     }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /** Returns the normalised basename of a shared `up` parent if both files
+   *  have one, otherwise null. */
+  private findSharedParentName(fileA: TFile, fileB: TFile): string | null {
+    const parentsA = this.getUpTargetPaths(fileA);
+    const parentsB = this.getUpTargetPaths(fileB);
+    for (const path of parentsA) {
+      if (parentsB.has(path)) {
+        const parent = this.app.vault.getAbstractFileByPath(path);
+        if (parent instanceof TFile) return this.toPathName(parent.basename);
+      }
+    }
+    return null;
+  }
+
+  /** Collect all resolved file paths reachable via any `up` or `up.*` frontmatter link. */
+  private getUpTargetPaths(file: TFile): Set<string> {
+    const paths = new Set<string>();
+    const cache = this.app.metadataCache.getFileCache(file);
+
+    // Wikilinks in frontmatterLinks (covers `up: [[X]]` and `up.foo: [[X]]`)
+    for (const link of cache?.frontmatterLinks ?? []) {
+      if (link.key !== 'up' && !link.key.startsWith('up.')) continue;
+      const resolved = this.app.metadataCache.getFirstLinkpathDest(link.link, file.path);
+      if (resolved) paths.add(resolved.path);
+    }
+
+    // Plain string value (`up: Note Name` without brackets)
+    const raw = cache?.frontmatter?.['up'];
+    if (typeof raw === 'string') {
+      const stripped = raw.replace(/^\[\[|\]\]$/g, '').trim();
+      const resolved = this.app.metadataCache.getFirstLinkpathDest(stripped, file.path);
+      if (resolved) paths.add(resolved.path);
+    }
+
+    return paths;
+  }
+
+  /** Convert a note basename to a lowercase hyphenated path-name token.
+   *  e.g. "Hypothesis Test" → "hypothesis-test" */
+  private toPathName(basename: string): string {
+    return basename
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
   }
 }
 
