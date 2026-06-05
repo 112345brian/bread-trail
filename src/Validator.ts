@@ -10,6 +10,10 @@ export interface ValidationViolation {
   message: string;
   /** Field / path name for grouping and display. */
   context?: string;
+  /** If present, the violation can be auto-fixed. */
+  fix?: () => Promise<void>;
+  /** Short label shown on the fix button. */
+  fixLabel?: string;
 }
 
 export class Validator {
@@ -36,11 +40,6 @@ export class Validator {
   }
 
   // ── Rule: require specificity ─────────────────────────────────────────────
-  //
-  // If a note has 2+ frontmatter links whose key starts with the same BC edge
-  // type (e.g. "next"), every one of those links must have a named sub-path
-  // (next.journal, next.fiction, …). A plain "next" alongside ANY other
-  // "next"-type link — whether plain or named — is a conflict.
 
   private checkRequireSpecificity(file: TFile, violations: ValidationViolation[]) {
     const { severity, edgeTypes } = this.settings.validationRules.requireSpecificity;
@@ -49,15 +48,9 @@ export class Validator {
     const links = this.app.metadataCache.getFileCache(file)?.frontmatterLinks ?? [];
 
     for (const edgeType of edgeTypes) {
-      // Collect every link whose key prefix matches this edge type
-      const matching = links.filter((l) => {
-        const prefix = l.key.split('.')[0];
-        return prefix === edgeType;
-      });
+      const matching = links.filter((l) => l.key.split('.')[0] === edgeType);
+      if (matching.length < 2) continue;
 
-      if (matching.length < 2) continue; // 0 or 1 → no conflict possible
-
-      // Check if any of them lacks a sub-path (plain "next" with no dot)
       const hasPlain = matching.some((l) => !l.key.includes('.'));
       if (hasPlain) {
         violations.push({
@@ -70,7 +63,6 @@ export class Validator {
         continue;
       }
 
-      // All links have sub-paths — check for duplicate sub-paths (two next.journal pointing to different notes)
       const subpathCount = new Map<string, number>();
       for (const l of matching) {
         const subpath = l.key.split('.').slice(1).join('.');
@@ -91,8 +83,6 @@ export class Validator {
   }
 
   // ── Rule: broken links ────────────────────────────────────────────────────
-  //
-  // Any next.X or prev.X link whose target note does not exist.
 
   private checkBrokenLinks(file: TFile, violations: ValidationViolation[]) {
     const { severity } = this.settings.validationRules.brokenLinks;
@@ -119,7 +109,8 @@ export class Validator {
 
   // ── Rule: missing reciprocal ──────────────────────────────────────────────
   //
-  // If A has `next.X: [[B]]`, then B must have `prev.X: [[A]]`, and vice versa.
+  // If A has `next.X: [[B]]`, B must have `prev.X: [[A]]`.
+  // The fix writes the missing key into the target's frontmatter.
 
   private checkMissingReciprocal(file: TFile, violations: ValidationViolation[]) {
     const { severity, namedPathsOnly } = this.settings.validationRules.missingReciprocal;
@@ -133,14 +124,14 @@ export class Validator {
       if (prefix !== 'next' && prefix !== 'prev') continue;
 
       const subpath = parts.slice(1).join('.');
-      if (namedPathsOnly && !subpath) continue; // skip plain next/prev when option is set
+      if (namedPathsOnly && !subpath) continue;
 
       const direction = prefix as 'next' | 'prev';
       const recipDir = direction === 'next' ? 'prev' : 'next';
       const expectedKey = subpath ? `${recipDir}.${subpath}` : recipDir;
 
       const target = this.app.metadataCache.getFirstLinkpathDest(link.link, file.path);
-      if (!target) continue; // already caught by broken-links rule
+      if (!target) continue; // caught by broken-links rule
 
       const targetLinks = this.app.metadataCache.getFileCache(target)?.frontmatterLinks ?? [];
       const hasReciprocal = targetLinks.some((tl) => {
@@ -150,12 +141,23 @@ export class Validator {
       });
 
       if (!hasReciprocal) {
+        // Capture locals for the fix closure
+        const fixTarget = target;
+        const fixKey = expectedKey;
+        const fixValue = `[[${file.basename}]]`;
+
         violations.push({
           file,
           severity,
           ruleId: 'missing-reciprocal',
           message: `\`${link.key}: [[${target.basename}]]\` — that note has no \`${expectedKey}\` pointing back.`,
           context: link.key,
+          fixLabel: `Add \`${fixKey}: ${fixValue}\` to ${fixTarget.basename}`,
+          fix: async () => {
+            await this.app.fileManager.processFrontMatter(fixTarget, (fm) => {
+              fm[fixKey] = fixValue;
+            });
+          },
         });
       }
     }

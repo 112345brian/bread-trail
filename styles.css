@@ -662,13 +662,20 @@
   border-left-color: var(--color-orange);
 }
 
+.bread-trail-validation-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
 .bread-trail-validation-row-label {
   font-size: 0.75em;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
-  margin-bottom: 2px;
+  flex: 1;
 }
 
 .bread-trail-validation-row-error .bread-trail-validation-row-label {
@@ -691,6 +698,39 @@
   color: var(--text-normal);
   line-height: 1.4;
   word-break: break-word;
+}
+
+.bread-trail-validation-fix-btn {
+  padding: 2px 9px;
+  font-size: 0.72em;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid var(--interactive-accent);
+  background: transparent;
+  color: var(--interactive-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms, color 120ms;
+}
+
+.bread-trail-validation-fix-btn:hover:not(:disabled) {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.bread-trail-validation-fix-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.bread-trail-validation-fix-btn.is-fixed {
+  border-color: var(--color-green);
+  color: var(--color-green);
+  opacity: 1;
+}
+
+.bread-trail-validation-row.is-fixed {
+  opacity: 0.5;
 }
 
 /* ── Path selector ─────────────────────────────────────────── */

@@ -88,10 +88,34 @@ export class ValidationModal extends Modal {
         const rowEl = fileEl.createDiv('bread-trail-validation-row');
         rowEl.addClass(`bread-trail-validation-row-${v.severity}`);
 
-        const labelEl = rowEl.createSpan('bread-trail-validation-row-label');
+        const topLineEl = rowEl.createDiv('bread-trail-validation-row-top');
+
+        const labelEl = topLineEl.createSpan('bread-trail-validation-row-label');
         labelEl.setText(RULE_LABELS[v.ruleId] ?? v.ruleId);
         if (v.context) {
           labelEl.createSpan({ text: ` · ${v.context}`, cls: 'bread-trail-validation-row-context' });
+        }
+
+        if (v.fix) {
+          const fixBtn = topLineEl.createEl('button', {
+            text: 'Fix',
+            cls: 'bread-trail-validation-fix-btn',
+          });
+          fixBtn.setAttribute('title', v.fixLabel ?? 'Apply fix');
+          fixBtn.addEventListener('click', async () => {
+            fixBtn.disabled = true;
+            fixBtn.setText('Fixing…');
+            try {
+              await v.fix!();
+              fixBtn.setText('✓ Fixed');
+              fixBtn.addClass('is-fixed');
+              rowEl.addClass('is-fixed');
+            } catch (err) {
+              fixBtn.setText('Failed');
+              fixBtn.removeAttribute('disabled');
+              console.error('Bread Trail: fix failed', err);
+            }
+          });
         }
 
         rowEl.createDiv({ text: v.message, cls: 'bread-trail-validation-row-message' });
