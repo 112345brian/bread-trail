@@ -975,34 +975,24 @@ export class GraphSwitcher extends Modal {
   }
 
   private updateNodeFading() {
-    const selectedNode = this.nodes.find((node) => node.file.path === this.selectedPath);
-    if (!selectedNode) return;
+    // Fade only sequence nodes that don't belong to the active path filter.
+    // Nodes that aren't directly connected to the selected node are NOT faded —
+    // every node in the graph is shown at full opacity unless a path filter is active.
+    for (const [path, el] of this.nodeElements) {
+      let faded = false;
 
-    const connected = this.getActuallyConnectedPaths(selectedNode.file);
-    connected.add(this.selectedPath);
-
-    // Respect edge type filter
-    for (const node of this.nodes) {
-      if (node.edgeType && !this.visibleEdgeTypes.has(node.edgeType)) {
-        connected.delete(node.file.path);
-      }
-    }
-
-    // Respect path filter: fade sequence nodes not on the active path
-    if (this.activePathFilter) {
-      for (const node of this.nodes) {
-        const isSeq = node.relation === 'previous' || node.relation === 'next';
-        if (isSeq && node.pathName !== this.activePathFilter) {
-          connected.delete(node.file.path);
+      if (this.activePathFilter) {
+        const node = this.nodes.find((n) => n.file.path === path);
+        if (node) {
+          const isSeq = node.relation === 'previous' || node.relation === 'next';
+          if (isSeq && node.pathName !== this.activePathFilter) faded = true;
         }
       }
-    }
 
-    for (const [path, el] of this.nodeElements) {
-      if (connected.has(path)) {
-        el.removeClass('bread-trail-graph-node-faded');
-      } else {
+      if (faded) {
         el.addClass('bread-trail-graph-node-faded');
+      } else {
+        el.removeClass('bread-trail-graph-node-faded');
       }
     }
   }
