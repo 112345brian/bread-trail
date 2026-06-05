@@ -12,8 +12,6 @@ export interface LinkChildrenConfig {
   path: string;
   /** When true, stale next.X / prev.X links are removed. */
   removeStale: boolean;
-  /** 'flat' writes `next.journal: [[X]]`; 'nested' writes `next: { journal: [[X]] }`. */
-  format: 'flat' | 'nested';
 }
 
 // ── Per-child diff ────────────────────────────────────────────────────────────
@@ -77,9 +75,8 @@ export function parseLinkChildrenConfig(
     ? raw['path'].trim()
     : toPathName(file.basename);
   const removeStale = typeof raw['remove-stale'] === 'boolean' ? raw['remove-stale'] : false;
-  const format = raw['format'] === 'nested' ? 'nested' : 'flat';
 
-  return { frontmatter, mode, path, removeStale, format };
+  return { frontmatter, mode, path, removeStale };
 }
 
 /** Return every file in the vault that has `bread-trail.link-children` configured. */
@@ -125,6 +122,21 @@ function readFmKey(fm: Record<string, unknown>, key: string): string | null {
     }
   }
   return null;
+}
+
+/** Detect whether a note already uses nested form for a dotted key.
+ *  Falls back to flat if no existing link is found either way. */
+function detectFormat(fm: Record<string, unknown>, key: string): 'flat' | 'nested' {
+  const dot = key.indexOf('.');
+  if (dot === -1) return 'flat';
+  const prefix = key.slice(0, dot);
+  const subpath = key.slice(dot + 1);
+  const nested = fm[prefix];
+  if (nested && typeof nested === 'object' && !Array.isArray(nested) &&
+      (nested as Record<string, unknown>)[subpath] !== undefined) {
+    return 'nested';
+  }
+  return 'flat';
 }
 
 /** Write a dotted key into a processFrontMatter object in the target format. */
@@ -233,9 +245,10 @@ export class Sequencer {
     return { parent, config, results };
   }
 
-  /** Execute a plan — writes all non-no-change diffs to frontmatter. */
+  /** Execute a plan — writes all non-no-change diffs to frontmatter.
+   *  Format (flat vs nested) is detected per-note: if the note already has the
+   *  key in nested form that format is preserved; otherwise flat is used. */
   async apply(plan: SequencePlan): Promise<void> {
-    const format = plan.config.format;
     for (const result of plan.results) {
       const writes = result.changes.filter((c) => c.kind !== 'no-change');
       if (writes.length === 0) continue;
@@ -243,6 +256,7 @@ export class Sequencer {
       await this.app.fileManager.processFrontMatter(result.file, (fm) => {
         for (const change of writes) {
           if (change.kind === 'add') {
+            const format = detectFormat(fm, change.key);
             writeFmKey(fm, change.key, change.value, format);
           } else if (change.kind === 'remove') {
             deleteFmKey(fm, change.key);
