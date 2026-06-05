@@ -165,7 +165,56 @@ export class GraphSwitcher extends Modal {
     this.assignSequencePositions(nodes);
     this.collectEdgeTypes(nodes);
     this.layoutNodes(nodes);
+    this.resolveOverlaps(nodes);
     return nodes;
+  }
+
+  /** Post-layout collision resolution: iteratively push overlapping nodes apart.
+   *  Sequence nodes (previous/next) are constrained to horizontal pushes only
+   *  so they stay on their Y track. The current (root) node is pinned. */
+  private resolveOverlaps(nodes: GraphNode[]) {
+    const MIN_SEP_X = 200;
+    const MIN_SEP_Y = 60;
+
+    const isSeq = (n: GraphNode) => n.relation === 'previous' || n.relation === 'next';
+    const isPinned = (n: GraphNode) => n.relation === 'current';
+
+    for (let pass = 0; pass < 25; pass++) {
+      let moved = false;
+
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i]!;
+          const b = nodes[j]!;
+
+          const dx = Math.abs(a.x - b.x);
+          const dy = Math.abs(a.y - b.y);
+
+          if (dx >= MIN_SEP_X || dy >= MIN_SEP_Y) continue;
+
+          moved = true;
+          const overlapX = MIN_SEP_X - dx + 1;
+          const overlapY = MIN_SEP_Y - dy + 1;
+          // Sequence nodes must stay on their Y track → always push horizontally
+          const pushHoriz = isSeq(a) || isSeq(b) || overlapX <= overlapY;
+
+          if (pushHoriz) {
+            const halfPush = overlapX / 2;
+            const dirAB = a.x <= b.x ? 1 : -1;
+            if (isPinned(a)) { b.x += dirAB * overlapX; }
+            else if (isPinned(b)) { a.x -= dirAB * overlapX; }
+            else { a.x -= dirAB * halfPush; b.x += dirAB * halfPush; }
+          } else {
+            const halfPush = overlapY / 2;
+            const dirAB = a.y <= b.y ? 1 : -1;
+            if (isPinned(a)) { b.y += dirAB * overlapY; }
+            else if (isPinned(b)) { a.y -= dirAB * overlapY; }
+            else { a.y -= dirAB * halfPush; b.y += dirAB * halfPush; }
+          }
+        }
+      }
+      if (!moved) break;
+    }
   }
 
   private collectEdgeTypes(nodes: GraphNode[]) {
