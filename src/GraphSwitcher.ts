@@ -154,8 +154,8 @@ export class GraphSwitcher extends Modal {
     }];
     const seen = new Set<string>([this.rootFile.path]);
 
-    this.addSequenceWithPaths(nodes, seen, 'previous', this.settings.previousDepth);
-    this.addSequenceWithPaths(nodes, seen, 'next', this.settings.nextDepth);
+    this.addSequenceWithPaths(nodes, seen, 'previous');
+    this.addSequenceWithPaths(nodes, seen, 'next');
     this.addHierarchy(nodes, seen, 'parent', this.settings.parentDepth);
     this.addHierarchy(nodes, seen, 'child', this.settings.childDepth);
     this.addSecondaryNodes(nodes, seen);
@@ -290,7 +290,7 @@ export class GraphSwitcher extends Modal {
 
   private addSequenceWithPaths(
     nodes: GraphNode[], seen: Set<string>,
-    relation: 'previous' | 'next', maxDepth: number,
+    relation: 'previous' | 'next',
   ) {
     const immediateNeighbors = this.getNeighbors(this.rootFile)
       .filter((n) => n.relation === relation && !seen.has(n.file.path));
@@ -310,7 +310,7 @@ export class GraphSwitcher extends Modal {
       let prevFile = this.rootFile;
       let cur = neighbor;
 
-      for (let depth = 1; depth <= maxDepth; depth++) {
+      for (let depth = 1; !seen.has(cur.file.path); depth++) {
         if (seen.has(cur.file.path)) break;
         nodes.push({ ...cur, depth, sourcePath: prevFile.path, pathName, x: 0, y: 0 });
         seen.add(cur.file.path);

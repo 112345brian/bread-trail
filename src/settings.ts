@@ -33,8 +33,6 @@ export interface ValidationRules {
 export interface BreadTrailSettings {
   parentDepth: number;
   childDepth: number;
-  previousDepth: number;
-  nextDepth: number;
   graphLabelProperty: string;
   graphNodeMetaProperty: string;
   showGraphSiblings: boolean;
@@ -50,7 +48,7 @@ export interface BreadTrailSettings {
   sequenceLinkFormat: 'flat' | 'nested';
 }
 
-type DepthSettingKey = 'parentDepth' | 'childDepth' | 'previousDepth' | 'nextDepth';
+type DepthSettingKey = 'parentDepth' | 'childDepth';
 
 export const DEFAULT_VALIDATION_RULES: ValidationRules = {
   requireSpecificity: {
@@ -72,8 +70,6 @@ export const DEFAULT_VALIDATION_RULES: ValidationRules = {
 export const DEFAULT_SETTINGS: BreadTrailSettings = {
   parentDepth: 2,
   childDepth: 1,
-  previousDepth: 3,
-  nextDepth: 3,
   graphLabelProperty: 'aliases',
   graphNodeMetaProperty: '',
   showGraphSiblings: false,
@@ -138,8 +134,6 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
   return {
     parentDepth: normalizeDepth(settings.parentDepth, DEFAULT_SETTINGS.parentDepth),
     childDepth: normalizeDepth(settings.childDepth, DEFAULT_SETTINGS.childDepth),
-    previousDepth: normalizeDepth(settings.previousDepth, DEFAULT_SETTINGS.previousDepth),
-    nextDepth: normalizeDepth(settings.nextDepth, DEFAULT_SETTINGS.nextDepth),
     graphLabelProperty: typeof settings.graphLabelProperty === 'string' ? settings.graphLabelProperty.trim() : DEFAULT_SETTINGS.graphLabelProperty,
     graphNodeMetaProperty: typeof settings.graphNodeMetaProperty === 'string' ? settings.graphNodeMetaProperty.trim() : DEFAULT_SETTINGS.graphNodeMetaProperty,
     showGraphSiblings: typeof settings.showGraphSiblings === 'boolean' ? settings.showGraphSiblings : DEFAULT_SETTINGS.showGraphSiblings,
@@ -184,8 +178,6 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     this.addDepthSetting('Parent depth', 'Maximum number of parent levels to include.', 'parentDepth');
     this.addDepthSetting('Child depth', 'Maximum number of child levels to include.', 'childDepth');
-    this.addDepthSetting('Previous depth', 'Maximum number of previous sequence notes to include.', 'previousDepth');
-    this.addDepthSetting('Next depth', 'Maximum number of next sequence notes to include.', 'nextDepth');
 
     new Setting(containerEl)
       .setName('Graph view')

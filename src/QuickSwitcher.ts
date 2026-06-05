@@ -48,15 +48,13 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     const previousSequence = this.getSequence('previous');
     const nextSequence = this.getSequence('next');
     this.addSequencePositions(previousSequence, nextSequence);
-    const previous = previousSequence.slice(0, this.settings.previousDepth);
-    const next = nextSequence.slice(0, this.settings.nextDepth);
 
-    previous.reverse();
+    const previous = [...previousSequence].reverse();
     for (const item of previous) {
       this.addItem(item, seen);
     }
 
-    for (const item of next) {
+    for (const item of nextSequence) {
       this.addItem(item, seen);
     }
 
