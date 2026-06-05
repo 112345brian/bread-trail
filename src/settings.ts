@@ -22,6 +22,12 @@ export interface ValidationRules {
     /** Only enforce for named paths (dot notation). When false, plain next/prev are also checked. */
     namedPathsOnly: boolean;
   };
+  /** A next/prev link connects two notes that share no common `up` parent.
+   *  Both notes must have at least one `up` link for this rule to fire
+   *  (root notes and parentless notes are exempt). */
+  crossHierarchy: {
+    severity: ValidationSeverity;
+  };
 }
 
 export interface BreadTrailSettings {
@@ -54,6 +60,9 @@ export const DEFAULT_VALIDATION_RULES: ValidationRules = {
   missingReciprocal: {
     severity: 'warning',
     namedPathsOnly: false,
+  },
+  crossHierarchy: {
+    severity: 'warning',
   },
 };
 
@@ -95,6 +104,10 @@ function normalizeValidationRules(raw: unknown): ValidationRules {
     ? r['missingReciprocal'] as Record<string, unknown>
     : {};
 
+  const cross = r['crossHierarchy'] && typeof r['crossHierarchy'] === 'object'
+    ? r['crossHierarchy'] as Record<string, unknown>
+    : {};
+
   return {
     requireSpecificity: {
       severity: normalizeSeverity(spec['severity'], DEFAULT_VALIDATION_RULES.requireSpecificity.severity),
@@ -110,6 +123,9 @@ function normalizeValidationRules(raw: unknown): ValidationRules {
       namedPathsOnly: typeof recip['namedPathsOnly'] === 'boolean'
         ? recip['namedPathsOnly']
         : DEFAULT_VALIDATION_RULES.missingReciprocal.namedPathsOnly,
+    },
+    crossHierarchy: {
+      severity: normalizeSeverity(cross['severity'], DEFAULT_VALIDATION_RULES.crossHierarchy.severity),
     },
   };
 }
@@ -331,6 +347,21 @@ class BreadTrailSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.validationRules.missingReciprocal.namedPathsOnly);
         toggle.onChange(async (value) => {
           this.plugin.settings.validationRules.missingReciprocal.namedPathsOnly = value;
+          await this.save();
+        });
+      });
+
+    // Rule: cross-hierarchy sequence
+    new Setting(containerEl)
+      .setName('Flag cross-hierarchy sequences')
+      .setDesc('Warn when a next/prev link connects two notes that have no shared "up" parent. Both notes must have at least one "up" link for this to fire — root notes and parentless notes are exempt.')
+      .addDropdown((dd) => {
+        dd.addOption('warning', 'Warning');
+        dd.addOption('error', 'Error');
+        dd.addOption('off', 'Off');
+        dd.setValue(this.plugin.settings.validationRules.crossHierarchy.severity);
+        dd.onChange(async (value) => {
+          this.plugin.settings.validationRules.crossHierarchy.severity = value as ValidationSeverity;
           await this.save();
         });
       });

@@ -27,6 +27,7 @@ export class Validator {
     this.checkRequireSpecificity(file, violations);
     this.checkBrokenLinks(file, violations);
     this.checkMissingReciprocal(file, violations);
+    this.checkCrossHierarchy(file, violations);
     return violations;
   }
 
@@ -197,6 +198,52 @@ export class Validator {
     }
   }
 
+  // ── Rule: cross-hierarchy sequence ───────────────────────────────────────
+  //
+  // A next/prev link between two notes whose `up` parents are entirely disjoint.
+  // Only fires when BOTH notes have at least one `up` link — root/parentless
+  // notes are intentionally exempt so you can freely sequence across top-level
+  // topics without noise.
+
+  private checkCrossHierarchy(file: TFile, violations: ValidationViolation[]) {
+    const { severity } = this.settings.validationRules.crossHierarchy;
+    if (severity === 'off') return;
+
+    const sourceParents = this.getUpTargetPaths(file);
+    if (sourceParents.size === 0) return; // source has no parent — exempt
+
+    const links = this.app.metadataCache.getFileCache(file)?.frontmatterLinks ?? [];
+
+    for (const link of links) {
+      const prefix = link.key.split('.')[0];
+      if (prefix !== 'next' && prefix !== 'prev') continue;
+
+      const target = this.app.metadataCache.getFirstLinkpathDest(link.link, file.path);
+      if (!target) continue; // caught by broken-links rule
+
+      const targetParents = this.getUpTargetPaths(target);
+      if (targetParents.size === 0) continue; // target has no parent — exempt
+
+      // Check for any overlap
+      let shared = false;
+      for (const p of sourceParents) {
+        if (targetParents.has(p)) { shared = true; break; }
+      }
+      if (shared) continue;
+
+      const sourceNames = this.getParentBasenames(sourceParents);
+      const targetNames = this.getParentBasenames(targetParents);
+
+      violations.push({
+        file,
+        severity,
+        ruleId: 'cross-hierarchy',
+        message: `\`${link.key}: [[${target.basename}]]\` — no shared parent. This note is under ${sourceNames}; that note is under ${targetNames}.`,
+        context: link.key,
+      });
+    }
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /** Returns the normalised basename of a shared `up` parent if both files
@@ -244,10 +291,23 @@ export class Validator {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
   }
+
+  /** Return a human-readable comma-separated list of basenames for a set of file paths. */
+  private getParentBasenames(paths: Set<string>): string {
+    const names = Array.from(paths).map((p) => {
+      const f = this.app.vault.getAbstractFileByPath(p);
+      return f instanceof TFile ? `"${f.basename}"` : `"${p}"`;
+    });
+    if (names.length === 0) return '(none)';
+    if (names.length === 1) return names[0] ?? '(none)';
+    const last = names.pop();
+    return `${names.join(', ')} and ${last}`;
+  }
 }
 
 export const RULE_LABELS: Record<string, string> = {
   'require-specificity': 'Conflict — path name required',
   'broken-link': 'Broken link',
   'missing-reciprocal': 'Missing reciprocal',
+  'cross-hierarchy': 'Cross-hierarchy sequence',
 };

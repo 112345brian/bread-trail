@@ -277,7 +277,8 @@ export default class BreadTrail extends Plugin {
     const rules = this.settings.validationRules;
     const allOff = rules.requireSpecificity.severity === 'off'
       && rules.brokenLinks.severity === 'off'
-      && rules.missingReciprocal.severity === 'off';
+      && rules.missingReciprocal.severity === 'off'
+      && rules.crossHierarchy.severity === 'off';
     if (allOff) return;
 
     const violations = new Validator(this.app, this.settings).validateFile(file);
