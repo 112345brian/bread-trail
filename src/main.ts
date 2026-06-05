@@ -273,8 +273,12 @@ export default class BreadTrail extends Plugin {
     const file = this.app.vault.getAbstractFileByPath(filePath);
     if (!(file instanceof TFile)) return;
 
-    // Skip if no validation rules are configured
-    if (this.settings.sequenceFields.length === 0) return;
+    // Skip if all rules are turned off
+    const rules = this.settings.validationRules;
+    const allOff = rules.requireSpecificity.severity === 'off'
+      && rules.brokenLinks.severity === 'off'
+      && rules.missingReciprocal.severity === 'off';
+    if (allOff) return;
 
     const violations = new Validator(this.app, this.settings).validateFile(file);
     if (violations.length === 0) return;

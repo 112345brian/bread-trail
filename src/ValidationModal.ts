@@ -1,6 +1,5 @@
 import { App, Modal, TFile, setIcon } from 'obsidian';
 import { RULE_LABELS, Validator } from './Validator';
-import type { ValidationViolation } from './Validator';
 import type { BreadTrailSettings } from './settings';
 
 export class ValidationModal extends Modal {
@@ -24,7 +23,7 @@ export class ValidationModal extends Modal {
       return;
     }
 
-    // Summary line
+    // Tally totals
     let totalErrors = 0;
     let totalWarnings = 0;
     for (const violations of results.values()) {
@@ -50,25 +49,24 @@ export class ValidationModal extends Modal {
       cls: 'bread-trail-validation-summary-files',
     });
 
-    // Sort files: errors first, then by path
+    // Errors-first sort
     const sortedEntries = Array.from(results.entries()).sort(([, aViols], [, bViols]) => {
-      const aHasError = aViols.some((v) => v.severity === 'error') ? 0 : 1;
-      const bHasError = bViols.some((v) => v.severity === 'error') ? 0 : 1;
-      return aHasError - bHasError;
+      const aErr = aViols.some((v) => v.severity === 'error') ? 0 : 1;
+      const bErr = bViols.some((v) => v.severity === 'error') ? 0 : 1;
+      return aErr - bErr;
     });
 
     const listEl = this.contentEl.createDiv('bread-trail-validation-list');
 
     for (const [filePath, violations] of sortedEntries) {
-      const file = this.app.vault.getAbstractFileByPath(filePath);
-      if (!file) continue;
-
       const fileEl = listEl.createDiv('bread-trail-validation-file');
-
-      // File header
-      const headerEl = fileEl.createDiv('bread-trail-validation-file-header');
       const hasError = violations.some((v) => v.severity === 'error');
-      setIcon(headerEl.createSpan('bread-trail-validation-file-icon'), hasError ? 'alert-circle' : 'alert-triangle');
+
+      // File header row
+      const headerEl = fileEl.createDiv('bread-trail-validation-file-header');
+      const iconEl = headerEl.createSpan('bread-trail-validation-file-icon');
+      if (hasError) iconEl.addClass('is-error');
+      setIcon(iconEl, hasError ? 'alert-circle' : 'alert-triangle');
 
       const nameEl = headerEl.createEl('button', {
         text: filePath,
@@ -82,23 +80,26 @@ export class ValidationModal extends Modal {
         }
       });
 
-      const badgeEl = headerEl.createSpan('bread-trail-validation-file-badge');
-      badgeEl.setText(String(violations.length));
+      headerEl.createSpan({
+        text: String(violations.length),
+        cls: 'bread-trail-validation-file-badge',
+      });
 
       // Violation rows
       const violsEl = fileEl.createDiv('bread-trail-validation-violations');
       for (const v of violations) {
         const rowEl = violsEl.createDiv(`bread-trail-validation-row bread-trail-validation-row-${v.severity}`);
-        const iconEl = rowEl.createSpan('bread-trail-validation-row-icon');
-        setIcon(iconEl, v.severity === 'error' ? 'alert-circle' : 'alert-triangle');
+
+        const iconRowEl = rowEl.createSpan('bread-trail-validation-row-icon');
+        setIcon(iconRowEl, v.severity === 'error' ? 'alert-circle' : 'alert-triangle');
 
         const textEl = rowEl.createDiv('bread-trail-validation-row-text');
-        const ruleEl = textEl.createSpan({
+        const labelEl = textEl.createSpan({
           text: RULE_LABELS[v.ruleId] ?? v.ruleId,
           cls: 'bread-trail-validation-rule-label',
         });
         if (v.context) {
-          ruleEl.createSpan({ text: ` · ${v.context}`, cls: 'bread-trail-validation-rule-context' });
+          labelEl.createSpan({ text: ` · ${v.context}`, cls: 'bread-trail-validation-rule-context' });
         }
         textEl.createDiv({ text: v.message, cls: 'bread-trail-validation-message' });
       }
