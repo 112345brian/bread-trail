@@ -128,7 +128,6 @@ export class GraphSwitcher extends Modal {
     viewport.querySelectorAll('.bread-trail-graph-node').forEach((el) => el.remove());
     this.nodeElements.clear();
 
-    this.renderEdges(this.edgeLayerEl!);
     this.renderNodes(viewport);
 
     // Update or create path selector
@@ -544,32 +543,6 @@ export class GraphSwitcher extends Modal {
         node.x = centerX + (index - (sorted.length - 1) / 2) * gap;
         node.y = y;
       });
-    }
-  }
-
-  private renderEdges(edgeLayer: SVGSVGElement) {
-    const nodesByPath = new Map(this.nodes.map((node) => [node.file.path, node]));
-    const root = nodesByPath.get(this.rootFile.path);
-    if (!root) return;
-
-    for (const node of this.nodes) {
-      if (node.relation === 'current') continue;
-      const source = nodesByPath.get(node.sourcePath) ?? root;
-      const line = edgeLayer.createSvg('line');
-      line.setAttribute('x1', String(source.x));
-      line.setAttribute('y1', String(source.y));
-      line.setAttribute('x2', String(node.x));
-      line.setAttribute('y2', String(node.y));
-      line.addClass(`bread-trail-graph-edge-${node.relation}`);
-
-      // Color path edges
-      if ((node.relation === 'previous' || node.relation === 'next') && node.pathName) {
-        const color = this.pathColorMap.get(node.pathName);
-        if (color) {
-          line.style.setProperty('--path-color', color);
-          line.addClass('bread-trail-graph-edge-path');
-        }
-      }
     }
   }
 
@@ -1002,14 +975,11 @@ export class GraphSwitcher extends Modal {
     this.edgeLayerEl.empty();
 
     const nodesByPath = new Map(this.nodes.map((node) => [node.file.path, node]));
-    const selectedNode = nodesByPath.get(this.selectedPath);
-    if (!selectedNode) return;
 
-    const connected = this.getActuallyConnectedPaths(selectedNode.file);
-
+    // Draw a structural edge for every non-root node, from its sourcePath to itself.
+    // This ensures all links are always visible, not just those touching the selected node.
     for (const node of this.nodes) {
-      if (node.file.path === this.selectedPath) continue;
-      if (!connected.has(node.file.path)) continue;
+      if (node.relation === 'current') continue;
       if (node.edgeType && !this.visibleEdgeTypes.has(node.edgeType)) continue;
 
       // Skip path-filtered sequence nodes
@@ -1018,9 +988,12 @@ export class GraphSwitcher extends Modal {
         if (isSeq && node.pathName !== this.activePathFilter) continue;
       }
 
+      const source = nodesByPath.get(node.sourcePath) ?? nodesByPath.get(this.rootFile.path);
+      if (!source) continue;
+
       const line = this.edgeLayerEl.createSvg('line');
-      line.setAttribute('x1', String(selectedNode.x));
-      line.setAttribute('y1', String(selectedNode.y));
+      line.setAttribute('x1', String(source.x));
+      line.setAttribute('y1', String(source.y));
       line.setAttribute('x2', String(node.x));
       line.setAttribute('y2', String(node.y));
       line.addClass(`bread-trail-graph-edge-${node.relation}`);

@@ -67,8 +67,8 @@ export const DEFAULT_VALIDATION_RULES: ValidationRules = {
 };
 
 export const DEFAULT_SETTINGS: BreadTrailSettings = {
-  parentDepth: 3,
-  childDepth: 3,
+  parentDepth: 2,
+  childDepth: 1,
   previousDepth: 3,
   nextDepth: 3,
   graphLabelProperty: 'aliases',
