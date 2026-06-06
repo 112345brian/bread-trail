@@ -128,7 +128,7 @@ export class Validator {
       const subpath = parts.slice(1).join('.');
       if (namedPathsOnly && !subpath) continue;
 
-      const direction = prefix as 'next' | 'prev';
+      const direction = prefix;
       const recipDir = direction === 'next' ? 'prev' : 'next';
       const expectedKey = subpath ? `${recipDir}.${subpath}` : recipDir;
 

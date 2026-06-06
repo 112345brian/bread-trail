@@ -5,10 +5,13 @@ import {
   Sequencer,
   parseLinkChildrenConfig,
   findAllConfiguredParents,
+  findStaleGlobalLinks,
+  applyStaleGlobalRemoval,
   countChanges,
   countIgnored,
   type SequencePlan,
   type ChildResult,
+  type StaleGlobalResult,
 } from './Sequencer';
 
 // ── Single-parent dry-run modal ───────────────────────────────────────────────
@@ -113,6 +116,7 @@ export class SequenceModal extends Modal {
           renderChange(changesEl, change);
         }
       }
+      renderWarnings(row, result.warnings);
       return;
     }
 
@@ -131,6 +135,7 @@ export class SequenceModal extends Modal {
     } else {
       row.createSpan({ text: 'no change', cls: 'bread-trail-seq-child-nochange' });
     }
+    renderWarnings(row, result.warnings);
   }
 }
 
@@ -235,6 +240,87 @@ export class SequenceAllModal extends Modal {
   }
 }
 
+// ── Remove stale bare-link modal ──────────────────────────────────────────────
+
+export class RemoveStaleModal extends Modal {
+  private results: StaleGlobalResult[] = [];
+
+  constructor(app: App) {
+    super(app);
+  }
+
+  onOpen() {
+    const { titleEl, contentEl } = this;
+    titleEl.setText('Remove stale bare links');
+    contentEl.addClass('bread-trail-sequence-modal');
+
+    this.results = findStaleGlobalLinks(this.app);
+
+    if (this.results.length === 0) {
+      contentEl.createEl('p', {
+        text: 'No stale bare next/prev links found — everything looks clean.',
+        cls: 'bread-trail-seq-no-changes',
+      });
+      return;
+    }
+
+    const totalKeys = this.results.reduce((s, r) => s + r.removeKeys.length, 0);
+
+    const summary = contentEl.createDiv('bread-trail-seq-summary');
+    summary.createSpan({
+      text: `${this.results.length} note${this.results.length !== 1 ? 's' : ''} with stale bare links`,
+    });
+    summary.createSpan({ text: ` · ${totalKeys} key${totalKeys !== 1 ? 's' : ''} to remove` });
+
+    contentEl.createEl('p', {
+      text: 'These notes have a plain next or prev key alongside a path-specific next.X / prev.X key. The bare key is the stale one.',
+      cls: 'bread-trail-seq-stale-desc',
+    });
+
+    const listEl = contentEl.createDiv('bread-trail-seq-list');
+    for (const result of this.results) {
+      const row = listEl.createDiv('bread-trail-seq-child');
+      const iconEl = row.createSpan('bread-trail-seq-child-icon');
+      setIcon(iconEl, 'trash-2');
+      iconEl.addClass('bread-trail-seq-child-icon-remove');
+      row.createSpan({ text: result.file.basename, cls: 'bread-trail-seq-child-name' });
+      const changesEl = row.createDiv('bread-trail-seq-child-changes');
+      for (const key of result.removeKeys) {
+        const el = changesEl.createDiv('bread-trail-seq-change bread-trail-seq-change-remove');
+        el.createSpan({ text: 'remove', cls: 'bread-trail-seq-change-verb' });
+        el.createSpan({ text: `  ${key}: ${result.currentValues[key] ?? ''}`, cls: 'bread-trail-seq-change-kv' });
+      }
+    }
+
+    const footer = contentEl.createDiv('bread-trail-seq-footer');
+    footer.createSpan({
+      text: `${totalKeys} removal${totalKeys !== 1 ? 's' : ''} pending`,
+      cls: 'bread-trail-seq-change-count',
+    });
+    const applyBtn = footer.createEl('button', {
+      text: 'Remove all',
+      cls: 'mod-cta bread-trail-seq-apply-btn',
+    });
+    applyBtn.addEventListener('click', async () => {
+      applyBtn.disabled = true;
+      applyBtn.setText('Removing…');
+      try {
+        await applyStaleGlobalRemoval(this.app, this.results);
+        applyBtn.setText('✓ Done');
+        new Notice(
+          `Removed ${totalKeys} stale bare link${totalKeys !== 1 ? 's' : ''} from ${this.results.length} note${this.results.length !== 1 ? 's' : ''}.`,
+        );
+        this.close();
+      } catch (err) {
+        applyBtn.disabled = false;
+        applyBtn.setText('Remove all');
+        new Notice('Removal failed — see console for details.');
+        console.error('Bread Trail stale removal error:', err);
+      }
+    });
+  }
+}
+
 // ── Shared renderers ──────────────────────────────────────────────────────────
 
 function renderChange(container: HTMLElement, change: import('./Sequencer').FrontmatterChange) {
@@ -242,6 +328,16 @@ function renderChange(container: HTMLElement, change: import('./Sequencer').Fron
   const el = container.createDiv(`bread-trail-seq-change bread-trail-seq-change-${change.kind}`);
   el.createSpan({ text: change.kind === 'add' ? 'add' : 'remove', cls: 'bread-trail-seq-change-verb' });
   el.createSpan({ text: `  ${change.key}: ${change.value}`, cls: 'bread-trail-seq-change-kv' });
+}
+
+function renderWarnings(container: HTMLElement, warnings: string[]) {
+  if (!warnings || warnings.length === 0) return;
+  const warningsEl = container.createDiv('bread-trail-seq-child-warnings');
+  for (const w of warnings) {
+    const el = warningsEl.createDiv('bread-trail-seq-child-warning');
+    setIcon(el.createSpan('bread-trail-seq-child-warning-icon'), 'alert-triangle');
+    el.createSpan({ text: w, cls: 'bread-trail-seq-child-warning-text' });
+  }
 }
 
 function renderChildCompact(listEl: HTMLElement, result: ChildResult) {
@@ -252,6 +348,7 @@ function renderChildCompact(listEl: HTMLElement, result: ChildResult) {
     setIcon(iconEl, 'minus-circle');
     row.createSpan({ text: result.file.basename, cls: 'bread-trail-seq-child-name bread-trail-seq-child-name-ignored' });
     row.createSpan({ text: `ignored — ${result.ignoreReason}`, cls: 'bread-trail-seq-child-reason' });
+    renderWarnings(row, result.warnings);
     return;
   }
 
@@ -263,4 +360,5 @@ function renderChildCompact(listEl: HTMLElement, result: ChildResult) {
   for (const change of realChanges) {
     renderChange(changesEl, change);
   }
+  renderWarnings(row, result.warnings);
 }

@@ -442,14 +442,78 @@
   font-size: 0.85em;
 }
 
+.bread-trail-nav-section-header.is-clickable {
+  cursor: pointer;
+}
+
 .bread-trail-graph-controls-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--background-modifier-border);
   color: var(--text-faint);
   font-size: 0.75em;
-  text-align: center;
   opacity: 0.7;
+}
+
+.bread-trail-graph-controls-footer > span:first-child {
+  flex: 1;
+  text-align: center;
+}
+
+/* Density toggle button */
+.bread-trail-density-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-size: 0.85em;
+  cursor: pointer;
+  opacity: 1;
+}
+
+.bread-trail-density-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.bread-trail-density-btn-icon {
+  width: 12px;
+  height: 12px;
+  display: flex;
+}
+
+.bread-trail-density-btn-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Excerpt element — hidden in compact mode */
+.bread-trail-graph-node-excerpt {
+  display: none;
+}
+
+.bread-trail-node-excerpt-mode .bread-trail-graph-node-excerpt {
+  display: block;
+  font-size: 0.7em;
+  color: var(--text-faint);
+  line-height: 1.4;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* In excerpt mode nodes can grow taller */
+.bread-trail-node-excerpt-mode .bread-trail-graph-node {
+  align-items: flex-start;
+  max-width: 280px;
 }
 
 /* ── Inline validation banner (reading mode) ───────────────── */
@@ -846,6 +910,16 @@
   margin: 16px 0;
 }
 
+.bread-trail-seq-stale-desc {
+  color: var(--text-faint);
+  font-size: 0.85em;
+  margin: 8px 0 12px;
+}
+
+.bread-trail-seq-child-icon-remove {
+  color: var(--color-red);
+}
+
 .bread-trail-seq-section {
   margin-bottom: 20px;
   padding-bottom: 16px;
@@ -914,6 +988,35 @@
   font-size: 0.85em;
 }
 
+.bread-trail-seq-child-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding-left: 24px;
+  margin-top: 2px;
+}
+
+.bread-trail-seq-child-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82em;
+  color: var(--color-yellow);
+}
+
+.bread-trail-seq-child-warning-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.bread-trail-seq-child-warning-text {
+  color: var(--text-muted);
+}
+
 .bread-trail-seq-child-changes {
   display: flex;
   flex-direction: column;
@@ -964,4 +1067,850 @@
 
 .bread-trail-seq-apply-btn {
   min-width: 80px;
+}
+
+/* ── Navigator sidebar view ────────────────────────────────────── */
+
+.bread-trail-nav {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Reset Obsidian's global button defaults for every button inside the navigator.
+   Obsidian sets height:var(--input-height), background-color:var(--interactive-normal),
+   and box-shadow on all <button>s — our per-class styles build on top of this reset. */
+.bread-trail-nav button {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: normal;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* Toolbar */
+.bread-trail-nav-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.bread-trail-nav-mode-group {
+  display: flex;
+  gap: 2px;
+  background: var(--background-modifier-hover);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.bread-trail-nav-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  flex-shrink: 0;
+}
+
+.bread-trail-nav-mode-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.bread-trail-nav-mode-btn.is-active {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.bread-trail-nav-mode-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Action buttons (preview toggle, reset, go-to-active) */
+.bread-trail-nav-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Push action buttons to the far right */
+.bread-trail-nav-action-btn:first-of-type {
+  margin-left: auto;
+}
+
+.bread-trail-nav-action-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.bread-trail-nav-action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Browser nav row: back button + folder title + sort — full width below the mode buttons */
+.bread-trail-nav-toolbar {
+  flex-wrap: wrap;
+}
+
+.bread-trail-nav-browser-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.bread-trail-nav-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.bread-trail-nav-back-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.bread-trail-nav-back-btn:not(:disabled):hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.bread-trail-nav-back-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.bread-trail-nav-browser-title {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.bread-trail-nav-browser-title.is-roots {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-style: italic;
+}
+
+/* Sort button inside browser nav row */
+.bread-trail-nav-browser-sort {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Scrollable content area */
+.bread-trail-nav-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.bread-trail-nav-empty {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 0.875em;
+  text-align: center;
+}
+
+/* Section wrapper */
+.bread-trail-nav-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.bread-trail-nav-section-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px 3px;
+  color: var(--text-faint);
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bread-trail-nav-collapse-btn {
+  display: flex;
+  align-items: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: color 100ms;
+}
+
+.bread-trail-nav-collapse-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.bread-trail-nav-section-header:hover .bread-trail-nav-collapse-btn {
+  color: var(--text-muted);
+}
+
+/* Push sort button to far right */
+.bread-trail-nav-section-label {
+  flex: 1;
+}
+
+.bread-trail-nav-sort-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.bread-trail-nav-sort-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.bread-trail-nav-sort-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.bread-trail-nav-section-icon {
+  display: flex;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.bread-trail-nav-section-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Group headers (group-by feature) */
+.bread-trail-nav-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.bread-trail-nav-group-header {
+  display: flex;
+  align-items: center;
+  padding: 6px 14px 2px;
+  margin-top: 4px;
+}
+
+.bread-trail-nav-group-label {
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--background-modifier-hover);
+}
+
+/* Note cards */
+.bread-trail-nav-card {
+  padding: 8px 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 0 4px;
+  transition: background 80ms ease;
+}
+
+.bread-trail-nav-card:hover {
+  background: var(--background-modifier-hover);
+}
+
+.bread-trail-nav-card.is-current {
+  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+  border-left: 3px solid var(--interactive-accent);
+  padding-left: 11px;
+  cursor: default;
+}
+
+/* Title row: position number + title text side by side */
+.bread-trail-nav-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bread-trail-nav-card-pos {
+  flex-shrink: 0;
+  font-size: 0.7em;
+  font-weight: 600;
+  color: var(--text-faint);
+  min-width: 18px;
+  text-align: right;
+}
+
+.bread-trail-nav-card.is-current .bread-trail-nav-card-pos {
+  color: var(--interactive-accent);
+}
+
+.bread-trail-nav-card-title {
+  font-size: 0.875em;
+  font-weight: 500;
+  color: var(--text-normal);
+  line-height: 1.3;
+  min-width: 0;
+  flex: 1;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bread-trail-nav-card.is-current .bread-trail-nav-card-title {
+  font-weight: 600;
+  color: var(--text-accent);
+}
+
+/* All cards are clickable */
+.bread-trail-nav-card:not(.is-current) {
+  cursor: pointer;
+}
+
+/* Chevron — a real button that drills into children */
+.bread-trail-nav-card-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: stretch;  /* fill the full title-row height */
+  width: 24px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 100ms, background 100ms;
+}
+
+.bread-trail-nav-card:hover .bread-trail-nav-card-chevron,
+.bread-trail-nav-card-chevron:hover {
+  opacity: 1;
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.bread-trail-nav-card-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Frontmatter metadata rows */
+.bread-trail-nav-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 3px;
+}
+
+.bread-trail-nav-card-meta-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 0.72em;
+  line-height: 1.4;
+}
+
+.bread-trail-nav-card-meta-val {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Timestamp row in Recent view — no key label, slightly more visible */
+.bread-trail-nav-card-meta-time {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rendered markdown preview */
+.bread-trail-nav-card-excerpt {
+  margin-top: 4px;
+  font-size: 0.775em;
+  color: var(--text-faint);
+  line-height: 1.45;
+  max-height: 220px;
+  overflow: hidden;
+  /* Fade bottom edge when clipped */
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+/* Tighten internal spacing for the rendered snippet */
+.bread-trail-nav-card-excerpt p,
+.bread-trail-nav-card-excerpt ul,
+.bread-trail-nav-card-excerpt ol,
+.bread-trail-nav-card-excerpt blockquote {
+  margin: 0 0 4px;
+}
+
+.bread-trail-nav-card-excerpt p:last-child,
+.bread-trail-nav-card-excerpt ul:last-child,
+.bread-trail-nav-card-excerpt ol:last-child {
+  margin-bottom: 0;
+}
+
+.bread-trail-nav-card-excerpt h1,
+.bread-trail-nav-card-excerpt h2,
+.bread-trail-nav-card-excerpt h3,
+.bread-trail-nav-card-excerpt h4,
+.bread-trail-nav-card-excerpt h5,
+.bread-trail-nav-card-excerpt h6 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0 0 2px;
+  color: var(--text-muted);
+}
+
+/* Tables */
+.bread-trail-nav-card-excerpt table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95em;
+  overflow-x: auto;
+  display: block;
+}
+
+.bread-trail-nav-card-excerpt th,
+.bread-trail-nav-card-excerpt td {
+  padding: 2px 6px;
+  border: 1px solid var(--background-modifier-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.bread-trail-nav-card-excerpt th {
+  background: var(--background-modifier-hover);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Lists */
+.bread-trail-nav-card-excerpt li {
+  margin: 0;
+  padding-left: 2px;
+}
+
+/* Inline code */
+.bread-trail-nav-card-excerpt code {
+  font-size: 0.9em;
+}
+
+/* Images inside the rendered snippet — constrain size */
+.bread-trail-nav-card-excerpt img {
+  max-height: 100px;
+  max-width: 100%;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+/* Chain section */
+.bread-trail-nav-section-chain { }
+.bread-trail-nav-card-previous { }
+.bread-trail-nav-card-current  { }
+.bread-trail-nav-card-next     { }
+.bread-trail-nav-section-parent { }
+.bread-trail-nav-section-child  { }
+.bread-trail-nav-card-parent   { }
+.bread-trail-nav-card-child    { }
+
+.bread-trail-nav-card-image {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: 4px;
+  margin-top: 6px;
+}
+
+/* ── Export / print suppression ─────────────────────────────── */
+@media print {
+  .bread-trail-validation-banner {
+    display: none !important;
+  }
+}
+
+/* ── Settings tab bar ───────────────────────────────────────── */
+
+/* Same button reset so Obsidian's global button styles don't inflate the tabs */
+.bread-trail-settings-tabs button {
+  height: auto;
+  min-height: 0;
+  box-shadow: none;
+  background: transparent;
+  background-color: transparent;
+  border: none;
+}
+
+.bread-trail-settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 8px;
+}
+
+.bread-trail-settings-tab {
+  padding: 4px 14px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.bread-trail-settings-tab:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.bread-trail-settings-tab.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.bread-trail-settings-content {
+  /* content area — just a thin wrapper, no extra chrome needed */
+}
+
+/* ── File-system browser ─────────────────────────────────────────────────── */
+
+.bread-trail-nav-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.bread-trail-nav-folder-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.bread-trail-nav-folder-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-accent);
+}
+
+.bread-trail-nav-folder-name {
+  flex: 1;
+  font-size: 0.9em;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bread-trail-nav-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.bread-trail-nav-file-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.bread-trail-nav-file-row.is-active {
+  background: var(--background-modifier-active-hover);
+}
+
+.bread-trail-nav-file-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.bread-trail-nav-file-name {
+  flex: 1;
+  font-size: 0.9em;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Floating navigator panel ────────────────────────────────────────────────
+ *
+ * Positioned absolute inside .view-content (position:relative).
+ * Collapses to a thin accent strip; expands to full panel on :hover.
+ * Strategy mirrors obsidian-floating-toc-plugin / return-headings.
+ * --------------------------------------------------------------------------- */
+
+.bt-float {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 10;
+  overflow: hidden;
+  transition: width 220ms ease, background-color 220ms ease, box-shadow 220ms ease;
+  /* Subtle accent strip so users know the panel is there */
+  background: linear-gradient(
+    to var(--bt-float-inner-side, right),
+    color-mix(in srgb, var(--color-accent) 35%, transparent) 0%,
+    transparent 100%
+  );
+}
+
+.bt-float-left {
+  left: 0;
+  border-radius: 0 6px 6px 0;
+  --bt-float-inner-side: right;
+}
+
+.bt-float-right {
+  right: 0;
+  border-radius: 6px 0 0 6px;
+  --bt-float-inner-side: left;
+}
+
+/* ── Expanded state ──────────────────────────────────────────────────────────── */
+
+.bt-float:hover {
+  width: 260px;
+  background: var(--background-primary);
+  box-shadow: var(--shadow-l);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Inner content wrapper ───────────────────────────────────────────────────── */
+
+.bt-float-inner {
+  width: 260px; /* prevent layout thrash as content appears */
+  min-height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms 60ms; /* slight delay so it fades in after width animation starts */
+  padding-bottom: 16px;
+}
+
+.bt-float:hover .bt-float-inner {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────────── */
+
+.bt-float-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px 4px;
+  position: sticky;
+  top: 0;
+  background: var(--background-primary);
+  z-index: 1;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 4px;
+}
+
+.bt-float-pin-btn {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 3px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: var(--radius-s);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px !important;
+  transition: color 0.1s, background 0.1s;
+}
+
+.bt-float-pin-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover) !important;
+}
+
+.bt-float-pin-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────────── */
+
+.bt-float-section {
+  margin-bottom: 8px;
+}
+
+.bt-float-section-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 0.7em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.bt-float-section-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.bt-float-section-icon svg {
+  width: 11px;
+  height: 11px;
+}
+
+.bt-float-section-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Rows ────────────────────────────────────────────────────────────────────── */
+
+.bt-float-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin: 0 4px;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.bt-float-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.bt-float-row.is-active {
+  background: var(--background-modifier-active-hover);
+}
+
+/* Chain relation indicator via left border accent */
+.bt-float-row[data-relation="previous"] {
+  opacity: 0.7;
+}
+
+.bt-float-row[data-relation="current"] {
+  border-left: 2px solid var(--color-accent);
+  padding-left: 8px;
+}
+
+.bt-float-row[data-relation="next"] {
+  opacity: 0.7;
+}
+
+.bt-float-row-title {
+  font-size: 0.85em;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.bt-float-row.is-active .bt-float-row-title {
+  color: var(--text-accent);
+  font-weight: 500;
+}
+
+.bt-float-row-meta {
+  font-size: 0.75em;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────────── */
+
+.bt-float-empty {
+  font-size: 0.8em;
+  color: var(--text-faint);
+  padding: 8px 10px;
+  margin: 0;
+  text-align: center;
 }

@@ -1,10 +1,12 @@
-import { App, MarkdownPostProcessorContext, MarkdownRenderChild, Modal, Notice, Plugin, TFile, setIcon } from 'obsidian';
+import { App, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Modal, Notice, Plugin, TFile, setIcon } from 'obsidian';
 import { OutlineModal } from './OutlineModal';
 import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
 import { GraphSwitcher } from './GraphSwitcher';
+import { NavigatorView, NAVIGATOR_VIEW_TYPE } from './NavigatorView';
+import { FloatingNavPanel } from './FloatingNav';
 import { Validator } from './Validator';
 import { ValidationModal } from './ValidationModal';
-import { SequenceModal, SequenceAllModal } from './SequenceModal';
+import { SequenceModal, SequenceAllModal, RemoveStaleModal } from './SequenceModal';
 import { Sequencer, parseLinkChildrenConfig, findAllConfiguredParents } from './Sequencer';
 import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
@@ -143,11 +145,20 @@ class TrailModal extends Modal {
 export default class BreadTrail extends Plugin {
   private bc: BreadcrumbsPlugin | null = null;
   settings: BreadTrailSettings = DEFAULT_SETTINGS;
-  private autoSeqDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+  private autoSeqDebounce = new Map<string, number>();
+
+  // Floating navigator panels — keyed by view, one entry per side
+  private floatingPanels = new Map<MarkdownView, { left?: FloatingNavPanel; right?: FloatingNavPanel }>();
 
   async onload() {
     this.settings = normalizeSettings((await this.loadData()) as Partial<BreadTrailSettings> | null ?? {});
     addSettingTab(this);
+
+    // Register the sidebar navigator view
+    this.registerView(
+      NAVIGATOR_VIEW_TYPE,
+      (leaf) => new NavigatorView(leaf, this.settings, () => this.bc, () => this.saveSettings()),
+    );
 
     // Check for Breadcrumbs on startup
     this.app.workspace.onLayoutReady(() => {
@@ -162,6 +173,24 @@ export default class BreadTrail extends Plugin {
       if (this.settings.showStartupNotice) {
         new Notice('Bread trail loaded — breadcrumbs detected.');
       }
+
+      // Refresh the navigator now that bc is available (it rendered before bc
+      // was set, so it showed "not detected").
+      this.getNavigatorView()?.scheduleRefresh();
+
+      // BC may still be building its graph asynchronously — listen for the
+      // graph-built event and refresh again when it fires.
+      try {
+        this.bc.events.on('graph-built', () => {
+          this.getNavigatorView()?.scheduleRefresh();
+          this.refreshFloatingNavPanels();
+        });
+      } catch {
+        // BC event API not available in this version — ignore
+      }
+
+      // Initial floating panel sync now that bc is set
+      this.syncFloatingNavPanels();
     });
 
     this.addCommand({
@@ -273,11 +302,58 @@ export default class BreadTrail extends Plugin {
       },
     });
 
-    // Auto-sequencing: re-run whenever a file changes and its parent(s) have mode: auto
+    this.addCommand({
+      id: 'remove-stale-global-links',
+      name: 'Remove stale bare next/prev links — vault-wide cleanup',
+      callback: () => {
+        new RemoveStaleModal(this.app).open();
+      },
+    });
+
+    this.addCommand({
+      id: 'open-navigator',
+      name: 'Open navigator sidebar',
+      callback: async () => {
+        const existing = this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE);
+        if (existing.length > 0 && existing[0]) {
+          await this.app.workspace.revealLeaf(existing[0]);
+          return;
+        }
+        const leaf = this.app.workspace.getRightLeaf(false);
+        if (leaf) {
+          await leaf.setViewState({ type: NAVIGATOR_VIEW_TYPE, active: true });
+          await this.app.workspace.revealLeaf(leaf);
+        }
+      },
+    });
+
+    // Keep navigator in sync with active file and bc events
     this.registerEvent(
-      this.app.metadataCache.on('changed', (file) => {
-        if (!this.bc) return;
-        this.handleAutoSequence(file);
+      this.app.workspace.on('active-leaf-change', () => {
+        this.getNavigatorView()?.scheduleRefresh();
+        // New leaves may have appeared; sync then refresh content
+        this.syncFloatingNavPanels();
+        this.refreshFloatingNavPanels();
+      }),
+    );
+
+    // Sidebar open/close changes whether floating panels should be visible
+    this.registerEvent(
+      this.app.workspace.on('layout-change', () => {
+        this.syncFloatingNavPanels();
+      }),
+    );
+
+    // Metadata changes: refresh floating panels + trigger auto-sequencing
+    this.registerEvent(
+      this.app.metadataCache.on('changed', (changedFile) => {
+        for (const [view, panels] of this.floatingPanels) {
+          if (view.file?.path === changedFile.path) {
+            panels.left?.refresh();
+            panels.right?.refresh();
+          }
+        }
+        if (this.bc) this.handleAutoSequence(changedFile);
       }),
     );
 
@@ -294,7 +370,7 @@ export default class BreadTrail extends Plugin {
           return true;
         }
 
-        new GraphSwitcher(this.app, file, this.bc, this.settings).open();
+        new GraphSwitcher(this.app, file, this.bc, this.settings, () => this.saveSettings()).open();
         return true;
       },
     });
@@ -332,6 +408,98 @@ export default class BreadTrail extends Plugin {
     await this.saveData(this.settings);
   }
 
+  // ── Floating navigator panel management ────────────────────────────────────
+
+  /** Returns true when the bread-trail navigator is visible in the given sidebar. */
+  private isSidebarShowingNav(side: 'left' | 'right'): boolean {
+    const split = side === 'left'
+      ? this.app.workspace.leftSplit
+      : this.app.workspace.rightSplit;
+    if ((split as unknown as { collapsed?: boolean }).collapsed) return false;
+    return this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE)
+      .some((l) => l.getRoot() === split);
+  }
+
+  /** Add/remove floating panels to match current settings and sidebar state. */
+  private syncFloatingNavPanels(): void {
+    if (!this.app.workspace.layoutReady) return;
+
+    const showLeft  = this.settings.floatingNavLeft  && !this.isSidebarShowingNav('left');
+    const showRight = this.settings.floatingNavRight && !this.isSidebarShowingNav('right');
+
+    // Collect currently visible markdown views
+    const currentViews = new Set<MarkdownView>();
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (leaf.view instanceof MarkdownView) currentViews.add(leaf.view);
+    });
+
+    // Detach panels for views that no longer exist
+    for (const [view, panels] of this.floatingPanels) {
+      if (!currentViews.has(view)) {
+        panels.left?.detach();
+        panels.right?.detach();
+        this.floatingPanels.delete(view);
+      }
+    }
+
+    // Add/remove panels for each visible view
+    for (const view of currentViews) {
+      if (!this.floatingPanels.has(view)) this.floatingPanels.set(view, {});
+      const panels = this.floatingPanels.get(view)!;
+
+      if (showLeft && !panels.left) {
+        panels.left = new FloatingNavPanel(view, this.app, () => this.settings, () => this.bc, 'left', () => {
+          void this.openNavigatorInSidebar('left');
+        });
+        panels.left.attach();
+      } else if (!showLeft && panels.left) {
+        panels.left.detach();
+        delete panels.left;
+      }
+
+      if (showRight && !panels.right) {
+        panels.right = new FloatingNavPanel(view, this.app, () => this.settings, () => this.bc, 'right', () => {
+          void this.openNavigatorInSidebar('right');
+        });
+        panels.right.attach();
+      } else if (!showRight && panels.right) {
+        panels.right.detach();
+        delete panels.right;
+      }
+    }
+  }
+
+  /** Refresh content of all existing floating panels (file or graph changed). */
+  private refreshFloatingNavPanels(): void {
+    for (const panels of this.floatingPanels.values()) {
+      panels.left?.refresh();
+      panels.right?.refresh();
+    }
+  }
+
+  /** Open (or reveal) the bread-trail navigator in the specified sidebar. */
+  private async openNavigatorInSidebar(side: 'left' | 'right'): Promise<void> {
+    // If a navigator already exists anywhere in the workspace, reveal it
+    const existing = this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE);
+    if (existing.length > 0 && existing[0]) {
+      await this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+    const leaf = side === 'left'
+      ? this.app.workspace.getLeftLeaf(false)
+      : this.app.workspace.getRightLeaf(false);
+    if (leaf) {
+      await leaf.setViewState({ type: NAVIGATOR_VIEW_TYPE, active: true });
+      await this.app.workspace.revealLeaf(leaf);
+    }
+  }
+
+  private getNavigatorView(): NavigatorView | null {
+    const leaves = this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE);
+    const view = leaves[0]?.view;
+    return view instanceof NavigatorView ? view : null;
+  }
+
   /** Debounced auto-sequencer: fires 2s after the last metadata change on a file.
    *  Checks whether any parent of the changed file has mode: auto, and if so re-sequences. */
   private handleAutoSequence(changedFile: TFile) {
@@ -355,22 +523,24 @@ export default class BreadTrail extends Plugin {
 
       // Debounce per parent — wait 2s after last change before re-sequencing
       const existing = this.autoSeqDebounce.get(parent.path);
-      if (existing) clearTimeout(existing);
+      if (existing) window.clearTimeout(existing);
 
-      const timer = setTimeout(async () => {
-        this.autoSeqDebounce.delete(parent.path);
-        try {
-          const sequencer = new Sequencer(this.app, bc, this.settings);
-          const plan = sequencer.plan(parent, config);
-          const changed = plan.results.reduce(
-            (sum, r) => sum + r.changes.filter((c) => c.kind !== 'no-change').length, 0,
-          );
-          if (changed === 0) return;
-          await sequencer.apply(plan);
-          new Notice(`Auto-sequenced "${parent.basename}" — ${changed} link${changed !== 1 ? 's' : ''} updated.`);
-        } catch (err) {
-          console.error('Bread Trail auto-sequence error:', err);
-        }
+      const timer = window.setTimeout(() => {
+        void (async () => {
+          this.autoSeqDebounce.delete(parent.path);
+          try {
+            const sequencer = new Sequencer(this.app, bc, this.settings);
+            const plan = sequencer.plan(parent, config);
+            const changed = plan.results.reduce(
+              (sum, r) => sum + r.changes.filter((c) => c.kind !== 'no-change').length, 0,
+            );
+            if (changed === 0) return;
+            await sequencer.apply(plan);
+            new Notice(`Auto-sequenced "${parent.basename}" — ${changed} link${changed !== 1 ? 's' : ''} updated.`);
+          } catch (err) {
+            console.error('Bread Trail auto-sequence error:', err);
+          }
+        })();
       }, 2000);
 
       this.autoSeqDebounce.set(parent.path, timer);
@@ -390,6 +560,7 @@ class ValidationBanner extends MarkdownRenderChild {
 
   onload() {
     const hasError = this.violations.some((v) => v.severity === 'error');
+    this.containerEl.addClass('no-export'); // hide from Obsidian PDF/HTML exports
     this.containerEl.addClass(hasError ? 'bread-trail-validation-banner-error' : 'bread-trail-validation-banner-warning');
 
     const headerEl = this.containerEl.createDiv('bread-trail-validation-banner-header');

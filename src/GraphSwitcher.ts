@@ -1,6 +1,7 @@
 import { App, Component, MarkdownRenderer, Modal, TFile, setIcon } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
+import { extractExcerpt } from './utils';
 
 interface GraphNode {
   file: TFile;
@@ -61,12 +62,14 @@ export class GraphSwitcher extends Modal {
   private activePathFilter: string | null = null;
   private allPaths = new Set<string>();
   private pathColorMap = new Map<string, string>();
+  private excerptCache = new Map<string, string>();
 
   constructor(
     app: App,
     private rootFile: TFile,
     private bc: BreadcrumbsPlugin,
     private settings: BreadTrailSettings,
+    private saveSettings: () => Promise<void>,
   ) {
     super(app);
     this.selectedPath = rootFile.path;
@@ -140,6 +143,9 @@ export class GraphSwitcher extends Modal {
     if (!panel.querySelector('.bread-trail-edge-filter')) {
       this.renderEdgeFilter();
     }
+
+    // Apply current display mode and load excerpts if needed
+    this.applyDisplayMode();
   }
 
   private buildNodes(): GraphNode[] {
@@ -271,6 +277,53 @@ export class GraphSwitcher extends Modal {
         node.sequenceLength = totalLength;
       });
     }
+
+    // For child/sequence-child nodes that have no sequence position yet,
+    // traverse their chain to compute position (e.g. when root is a parent note).
+    for (const node of nodes) {
+      if (node.sequencePosition) continue;
+      if (node.relation !== 'child' && node.relation !== 'sequence-child') continue;
+      const info = this.resolveSequencePosition(node.file);
+      if (info) {
+        node.sequencePosition = info.position;
+        node.sequenceLength = info.total;
+      }
+    }
+  }
+
+  /** Walk backwards via 'previous' to find chain start, then forward to count total.
+   *  Returns null if the node isn't in a sequence (no prev/next neighbours). */
+  private resolveSequencePosition(file: TFile): { position: number; total: number } | null {
+    // Walk backward to start of chain
+    const seenBack = new Set<string>();
+    let cur = file;
+    let position = 1;
+    while (!seenBack.has(cur.path)) {
+      seenBack.add(cur.path);
+      const prevNeighbours = this.getNeighbors(cur).filter(
+        (n) => n.relation === 'previous' && !seenBack.has(n.file.path),
+      );
+      if (prevNeighbours.length === 0) break;
+      cur = prevNeighbours[0]!.file;
+      position++;
+    }
+
+    // Walk forward from start to count total
+    const seenFwd = new Set<string>();
+    let fwd = cur;
+    let total = 0;
+    while (!seenFwd.has(fwd.path)) {
+      seenFwd.add(fwd.path);
+      total++;
+      const nextNeighbours = this.getNeighbors(fwd).filter(
+        (n) => n.relation === 'next' && !seenFwd.has(n.file.path),
+      );
+      if (nextNeighbours.length === 0) break;
+      fwd = nextNeighbours[0]!.file;
+    }
+
+    if (total <= 1) return null;
+    return { position, total };
   }
 
   /** Look up the sub-path name (the part after the dot) for an edge from sourceFile to targetFile.
@@ -570,6 +623,8 @@ export class GraphSwitcher extends Modal {
       setIcon(nodeEl.createSpan('bread-trail-graph-node-icon'), this.getIcon(node.relation));
       const labelWrap = nodeEl.createSpan('bread-trail-graph-node-label-wrap');
       labelWrap.createSpan({ text: label, cls: 'bread-trail-graph-node-label' });
+      // Excerpt placeholder — filled async in excerpt mode
+      labelWrap.createSpan({ cls: 'bread-trail-graph-node-excerpt' });
 
       // Show user-specified metadata property below label
       if (this.settings.graphNodeMetaProperty) {
@@ -590,8 +645,8 @@ export class GraphSwitcher extends Modal {
         if (color) chipEl.style.setProperty('--path-color', color);
       }
 
-      // Show sequence position for prev/next/current nodes
-      if ((node.relation === 'previous' || node.relation === 'next' || node.relation === 'current') && node.sequencePosition && node.sequenceLength) {
+      // Show sequence position for any node that has one (prev/next/current/child/sequence-child)
+      if (node.sequencePosition && node.sequenceLength) {
         nodeEl.createSpan({
           text: `${node.sequencePosition}/${node.sequenceLength}`,
           cls: 'bread-trail-graph-node-depth bread-trail-graph-node-sequence-number'
@@ -693,11 +748,64 @@ export class GraphSwitcher extends Modal {
     legendEl.createSpan({ text: '↓ sequence child' });
     legendEl.createSpan({ text: '↗ related' });
 
-    panel.createDiv({
-      text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • =/−: zoom • Type to filter',
-      cls: 'bread-trail-graph-controls-footer'
+    const footer = panel.createDiv('bread-trail-graph-controls-footer');
+    footer.createSpan({ text: 'Arrows/WASD: navigate • Enter: explore • 2×Enter: open • Shift+Enter: flip • Home: recenter • =/−: zoom • Type to filter' });
+
+    const densityBtn = footer.createEl('button', {
+      cls: 'bread-trail-density-btn',
     });
+    setIcon(densityBtn.createSpan('bread-trail-density-btn-icon'), 'align-left');
+    densityBtn.createSpan({ text: this.settings.graphNodeDisplayMode === 'excerpt' ? 'excerpt' : 'compact', cls: 'bread-trail-density-btn-label' });
+    densityBtn.setAttribute('aria-label', 'Toggle node display density');
+    densityBtn.addEventListener('click', () => this.toggleDisplayMode(densityBtn));
   }
+
+  private applyDisplayMode() {
+    const isExcerpt = this.settings.graphNodeDisplayMode === 'excerpt';
+    if (isExcerpt) {
+      this.contentEl.addClass('bread-trail-node-excerpt-mode');
+      void this.loadExcerpts();
+    } else {
+      this.contentEl.removeClass('bread-trail-node-excerpt-mode');
+    }
+    // Sync button label if it exists
+    const label = this.graphPanelEl?.querySelector('.bread-trail-density-btn-label');
+    if (label) label.textContent = isExcerpt ? 'excerpt' : 'compact';
+  }
+
+  private toggleDisplayMode(btn: HTMLButtonElement) {
+    const next = this.settings.graphNodeDisplayMode === 'compact' ? 'excerpt' : 'compact';
+    this.settings.graphNodeDisplayMode = next;
+    void this.saveSettings();
+    this.applyDisplayMode();
+    // Update button label
+    const label = btn.querySelector('.bread-trail-density-btn-label');
+    if (label) label.textContent = next;
+  }
+
+  private async loadExcerpts() {
+    for (const node of this.nodes) {
+      const el = this.nodeElements.get(node.file.path);
+      if (!el) continue;
+      const excerptEl = el.querySelector('.bread-trail-graph-node-excerpt');
+      if (!excerptEl) continue;
+
+      // Use cache to avoid re-reading files on re-renders
+      let excerpt = this.excerptCache.get(node.file.path);
+      if (excerpt === undefined) {
+        try {
+          const content = await this.app.vault.cachedRead(node.file);
+          excerpt = extractExcerpt(content, 160);
+        } catch {
+          excerpt = '';
+        }
+        this.excerptCache.set(node.file.path, excerpt);
+      }
+      excerptEl.textContent = excerpt;
+    }
+  }
+
+
 
   private renderEdgeFilter() {
     if (this.allEdgeTypes.size === 0) return;

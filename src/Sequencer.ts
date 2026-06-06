@@ -30,6 +30,8 @@ export interface ChildResult {
   ignored: boolean;
   ignoreReason?: string;
   changes: FrontmatterChange[];
+  /** Non-blocking warnings about existing frontmatter that may conflict. */
+  warnings: string[];
 }
 
 export interface SequencePlan {
@@ -49,7 +51,7 @@ function toPathName(basename: string): string {
     .replace(/^-|-$/g, '');
 }
 
-/** Read and validate `bread-trail.link-children` from a file's frontmatter.
+/** Read and validate `bread-trail` sequencer config from a file's frontmatter.
  *  Returns null if the key is absent or malformed. */
 export function parseLinkChildrenConfig(
   app: App,
@@ -61,10 +63,7 @@ export function parseLinkChildrenConfig(
   const bt = fm['bread-trail'];
   if (!bt || typeof bt !== 'object') return null;
 
-  const lc = (bt as Record<string, unknown>)['link-children'];
-  if (!lc || typeof lc !== 'object') return null;
-
-  const raw = lc as Record<string, unknown>;
+  const raw = bt as Record<string, unknown>;
 
   const frontmatter = Array.isArray(raw['frontmatter'])
     ? (raw['frontmatter'] as unknown[]).filter((f): f is string => typeof f === 'string' && f.trim().length > 0)
@@ -80,7 +79,7 @@ export function parseLinkChildrenConfig(
   return { frontmatter, mode, path, removeStale };
 }
 
-/** Return every file in the vault that has `bread-trail.link-children` configured. */
+/** Return every file in the vault that has `bread-trail` sequencer config. */
 export function findAllConfiguredParents(app: App): Array<{ file: TFile; config: LinkChildrenConfig }> {
   const results: Array<{ file: TFile; config: LinkChildrenConfig }> = [];
   for (const file of app.vault.getMarkdownFiles()) {
@@ -175,7 +174,7 @@ function deleteFmKey(fm: Record<string, unknown>, key: string) {
     if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
       delete (nested as Record<string, unknown>)[subpath];
       // Remove the parent key if now empty
-      if (Object.keys(nested as object).length === 0) delete fm[prefix];
+      if (Object.keys(nested).length === 0) delete fm[prefix];
     }
   }
 }
@@ -188,6 +187,20 @@ export class Sequencer {
     private bc: BreadcrumbsPlugin,
     private settings: Pick<BreadTrailSettings, 'sequenceLinkFormat'>,
   ) {}
+
+  /** Check a child's frontmatter for bare `next` / `prev` keys (no sub-path)
+   *  that would conflict with the path-specific keys being sequenced. */
+  private detectBareConflicts(fm: Record<string, unknown>, path: string): string[] {
+    const warnings: string[] = [];
+    // A bare `next` or `prev` key (no dot) alongside a `next.X` / `prev.X` is a conflict
+    if (fm['next'] !== undefined) {
+      warnings.push(`has bare \`next\` link — use \`next.${path}\` instead`);
+    }
+    if (fm['prev'] !== undefined) {
+      warnings.push(`has bare \`prev\` link — use \`prev.${path}\` instead`);
+    }
+    return warnings;
+  }
 
   /** Build a full plan for a single parent without writing anything. */
   plan(parent: TFile, config: LinkChildrenConfig): SequencePlan {
@@ -208,6 +221,7 @@ export class Sequencer {
           ignored: true,
           ignoreReason: `no ${config.frontmatter.join(' or ')}`,
           changes: [],
+          warnings: this.detectBareConflicts(fm, config.path),
         });
       } else {
         included.push({ file: child, sortValue: val });
@@ -233,7 +247,7 @@ export class Sequencer {
       // next link
       changes.push(...this.diffKey(fm, nextKey, desiredNext, config.removeStale));
 
-      return { file, ignored: false, changes };
+      return { file, ignored: false, changes, warnings: this.detectBareConflicts(fm, config.path) };
     });
 
     // For ignored children: if removeStale, flag any existing next/prev links for removal
@@ -340,4 +354,62 @@ export function countChanges(plan: SequencePlan): number {
 /** Count ignored children in a plan. */
 export function countIgnored(plan: SequencePlan): number {
   return plan.results.filter((r) => r.ignored).length;
+}
+
+// ── Stale global-link cleanup ─────────────────────────────────────────────────
+
+export interface StaleGlobalResult {
+  file: TFile;
+  /** Bare frontmatter keys to remove (e.g. 'next', 'prev'). */
+  removeKeys: string[];
+  /** Display values of those keys for the dry-run UI. */
+  currentValues: Record<string, string>;
+}
+
+/** Scan the vault for notes that have a bare `next` or `prev` key (a plain
+ *  wikilink, not an object) alongside at least one path-specific `next.*` /
+ *  `prev.*` flat key.  Those bare keys are stale and safe to remove. */
+export function findStaleGlobalLinks(app: App): StaleGlobalResult[] {
+  const results: StaleGlobalResult[] = [];
+
+  for (const file of app.vault.getMarkdownFiles()) {
+    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) continue;
+
+    const removeKeys: string[] = [];
+    const currentValues: Record<string, string> = {};
+
+    const fmKeys = Object.keys(fm);
+
+    // bare `next` (non-object) + any `next.*` flat key → stale
+    const nextVal = fm['next'];
+    if (nextVal !== undefined && typeof nextVal !== 'object' &&
+        fmKeys.some((k) => k !== 'next' && k.startsWith('next.'))) {
+      removeKeys.push('next');
+      currentValues['next'] = String(nextVal);
+    }
+
+    // bare `prev` (non-object) + any `prev.*` flat key → stale
+    const prevVal = fm['prev'];
+    if (prevVal !== undefined && typeof prevVal !== 'object' &&
+        fmKeys.some((k) => k !== 'prev' && k.startsWith('prev.'))) {
+      removeKeys.push('prev');
+      currentValues['prev'] = String(prevVal);
+    }
+
+    if (removeKeys.length > 0) {
+      results.push({ file, removeKeys, currentValues });
+    }
+  }
+
+  return results;
+}
+
+/** Apply a stale-link removal plan — deletes bare keys from frontmatter. */
+export async function applyStaleGlobalRemoval(app: App, results: StaleGlobalResult[]): Promise<void> {
+  for (const { file, removeKeys } of results) {
+    await app.fileManager.processFrontMatter(file, (fm) => {
+      for (const key of removeKeys) delete fm[key];
+    });
+  }
 }
