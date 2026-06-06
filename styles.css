@@ -1436,6 +1436,19 @@
   padding-top: 4px;
 }
 
+/* Desktop: remove from flow entirely when inactive */
+.bread-trail-nav-browser-nav.is-inactive {
+  display: none;
+}
+
+/* Mobile: keep in flow (holds space so toolbar height stays constant),
+   just make it invisible and non-interactive */
+.is-mobile .bread-trail-nav-browser-nav.is-inactive {
+  display: flex;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .bread-trail-nav-back-btn {
   display: flex;
   align-items: center;
