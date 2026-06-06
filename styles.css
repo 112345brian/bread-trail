@@ -2244,25 +2244,54 @@
   padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
 
-/* Toolbar buttons: 30px keeps all icons on one line in a narrow sidebar.
-   36px was too wide — the auto-margin before action buttons pushed the
-   last icon onto a second row. */
-.is-mobile .bread-trail-nav-mode-btn,
+/* Mode group spans the full toolbar width — each button gets an equal share,
+   like a proper tab bar. flex: 1 + min-width: 0 lets them shrink if needed. */
+.is-mobile .bread-trail-nav-mode-group {
+  width: 100%;
+  justify-content: space-around;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  gap: 0;
+}
+
+.is-mobile .bread-trail-nav-mode-btn {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  width: auto;
+  border-radius: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.is-mobile .bread-trail-nav-mode-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Active tab: accent underline instead of pill background */
+.is-mobile .bread-trail-nav-mode-btn.is-active {
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-accent);
+  border-bottom: 2px solid var(--color-accent);
+}
+
+/* Secondary action buttons sit on their own line, right-aligned */
 .is-mobile .bread-trail-nav-action-btn {
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
 }
 
-.is-mobile .bread-trail-nav-mode-btn svg,
 .is-mobile .bread-trail-nav-action-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
-/* Replace margin-left: auto (which eats all leftover space) with a small
-   fixed gap so the action buttons stay close to the mode group */
+/* Restore auto margin — action buttons push to the right of their row */
 .is-mobile .bread-trail-nav-action-btn:first-of-type {
-  margin-left: 4px;
+  margin-left: auto;
 }
 
 /* Taller cards for easier tapping */
