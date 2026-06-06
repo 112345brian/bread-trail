@@ -2260,6 +2260,7 @@
 .is-mobile .bread-trail-nav-toolbar {
   border-top: 1px solid var(--background-modifier-border);
   border-bottom: none;
+  padding-bottom: 0;
 }
 
 /* Mode group spans the full toolbar width — each button gets an equal share,
