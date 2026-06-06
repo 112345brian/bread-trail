@@ -2252,17 +2252,30 @@
 
 /* Navigator sidebar ---------------------------------------- */
 
-/* Toolbar moves to the bottom — idiomatic mobile nav pattern (thumb zone).
-   column-reverse flips the flex order so the toolbar (first in DOM) renders
-   last visually, content fills the top. */
+/* Toolbar pinned absolutely to the bottom of .bread-trail-nav, which is
+   height:100% of .view-content. This bypasses any padding Obsidian adds
+   below view-content for its own chrome — no gap, no column-reverse tricks. */
 .is-mobile .bread-trail-nav {
-  flex-direction: column-reverse;
+  flex-direction: column;
+  position: relative;
 }
 
 .is-mobile .bread-trail-nav-toolbar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
   border-top: 1px solid var(--background-modifier-border);
   border-bottom: none;
   padding: 6px 10px 0;
+  background: var(--background-primary);
+  z-index: 10;
+}
+
+/* Push content up so it doesn't scroll behind the absolute toolbar.
+   ~92px covers the two toolbar rows (44px modes + 36px actions + padding). */
+.is-mobile .bread-trail-nav-content {
+  padding-bottom: 92px;
 }
 
 /* Mode group spans the full toolbar width — each button gets an equal share,
