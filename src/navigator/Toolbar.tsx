@@ -69,27 +69,6 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
         )}
       </div>
 
-      {/* Desktop only: browser nav (back + title + sort) sits in-line with action buttons.
-          On mobile, this is rendered as a sticky header inside the content area instead. */}
-      {!isMobile && (
-        <div class={`bread-trail-nav-browser-nav${isBrowser ? '' : ' is-inactive'}`}>
-          <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
-            onClick={actions.browserBack}>
-            <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
-          </button>
-          <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
-            {browserTitle}
-          </span>
-          {browserViewMode === 'bc' && browserSortCycle.length > 1 && (
-            <button class="bread-trail-nav-sort-btn bread-trail-nav-browser-sort"
-              aria-label={SORT_LABEL[browserSortMode] ?? browserSortMode}
-              onClick={actions.browserCycleSort}>
-              <OIcon name={SORT_ICON[browserSortMode] ?? 'list-ordered'} />
-            </button>
-          )}
-        </div>
-      )}
-
       {(vis.goToActive || vis.reset) && (
         <ActionBtn
           icon={isBrowser && atActive ? 'rotate-ccw' : 'crosshair'}
@@ -112,6 +91,28 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
       >
         <OIcon name="navigation" />
       </button>
+
+      {/* Desktop only: browser nav (back + title + sort) goes LAST so it wraps
+          to its own full-width row below the mode group + action buttons.
+          On mobile this lives in the content area as a sticky header instead. */}
+      {!isMobile && isBrowser && (
+        <div class="bread-trail-nav-browser-nav">
+          <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
+            onClick={actions.browserBack}>
+            <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
+          </button>
+          <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
+            {browserTitle}
+          </span>
+          {browserViewMode === 'bc' && browserSortCycle.length > 1 && (
+            <button class="bread-trail-nav-sort-btn bread-trail-nav-browser-sort"
+              aria-label={SORT_LABEL[browserSortMode] ?? browserSortMode}
+              onClick={actions.browserCycleSort}>
+              <OIcon name={SORT_ICON[browserSortMode] ?? 'list-ordered'} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

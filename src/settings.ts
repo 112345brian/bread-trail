@@ -82,6 +82,8 @@ export interface BreadTrailSettings {
   floatingNavLeft: boolean;
   /** Show a floating navigator panel on the right edge of each note. */
   floatingNavRight: boolean;
+  /** On mobile: which sidebar the navigator auto-opens into on startup. */
+  mobileNavigatorSide: 'left' | 'right';
   /** On mobile: pinch-out (two-finger spread) anywhere to open the tile explorer. */
   mobileTapExplorer: boolean;
   /** Replace the file-path breadcrumb in note headers with BC ancestor links. */
@@ -163,6 +165,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   navigatorSortField: '',
   floatingNavLeft: false,
   floatingNavRight: false,
+  mobileNavigatorSide: 'left',
   mobileTapExplorer: true,
   headerBreadcrumbs: false,
   headerBreadcrumbsDepth: 0,
@@ -267,6 +270,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     navigatorSortField: typeof settings.navigatorSortField === 'string' ? settings.navigatorSortField.trim() : '',
     floatingNavLeft: typeof settings.floatingNavLeft === 'boolean' ? settings.floatingNavLeft : false,
     floatingNavRight: typeof settings.floatingNavRight === 'boolean' ? settings.floatingNavRight : false,
+    mobileNavigatorSide: settings.mobileNavigatorSide === 'right' ? 'right' : 'left',
     mobileTapExplorer: typeof settings.mobileTapExplorer === 'boolean' ? settings.mobileTapExplorer : true,
     headerBreadcrumbs: typeof settings.headerBreadcrumbs === 'boolean' ? settings.headerBreadcrumbs : false,
     headerBreadcrumbsDepth: typeof settings.headerBreadcrumbsDepth === 'number' ? settings.headerBreadcrumbsDepth : 0,
@@ -514,6 +518,19 @@ class BreadTrailSettingTab extends PluginSettingTab {
     new Setting(el).setName('Floating navigator').setHeading();
 
     if (Platform.isMobile) {
+      new Setting(el)
+        .setName('Navigator sidebar side')
+        .setDesc('Which side the navigator opens into on startup.')
+        .addDropdown((d) => {
+          d.addOption('left', 'Left');
+          d.addOption('right', 'Right');
+          d.setValue(this.plugin.settings.mobileNavigatorSide);
+          d.onChange(async (v: string) => {
+            this.plugin.settings.mobileNavigatorSide = v as 'left' | 'right';
+            await this.save();
+          });
+        });
+
       new Setting(el)
         .setName('Pinch to open explorer')
         .setDesc('Spread two fingers apart anywhere on screen to open the tile explorer.')

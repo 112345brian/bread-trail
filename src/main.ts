@@ -177,26 +177,21 @@ export default class BreadTrail extends Plugin {
       (leaf) => new NavigatorView(leaf, this.settings, () => this.ensureBreadcrumbs(), () => this.saveSettings()),
     );
 
-    // Ribbon icon — opens the navigator sidebar (left on mobile, right on desktop)
+    // Ribbon icon — opens the navigator sidebar
     this.addRibbonIcon('footprints', 'BreadTrail navigator', async () => {
-      const existing = this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE);
-      if (existing.length > 0 && existing[0]) {
-        await this.app.workspace.revealLeaf(existing[0]);
-        return;
-      }
-      const leaf = Platform.isMobile
-        ? this.app.workspace.getLeftLeaf(false)
-        : this.app.workspace.getRightLeaf(false);
-      if (leaf) {
-        await leaf.setViewState({ type: NAVIGATOR_VIEW_TYPE, active: true });
-        await this.app.workspace.revealLeaf(leaf);
-      }
+      const side = Platform.isMobile ? this.settings.mobileNavigatorSide : 'right';
+      await this.openNavigatorInSidebar(side);
     });
 
     // Check for Breadcrumbs on startup. Breadcrumbs can finish loading after
     // Bread Trail, so this path retries before showing the missing-plugin modal.
-    this.app.workspace.onLayoutReady(() => {
+    this.app.workspace.onLayoutReady(async () => {
       this.checkBreadcrumbsOnStartup();
+      // On mobile: auto-open the navigator so the user never has to manually
+      // trigger it after the app starts. Side is user-configurable (default left).
+      if (Platform.isMobile) {
+        await this.openNavigatorInSidebar(this.settings.mobileNavigatorSide);
+      }
     });
 
     this.addCommand({
@@ -326,18 +321,8 @@ export default class BreadTrail extends Plugin {
       id: 'open-navigator',
       name: 'Open navigator sidebar',
       callback: async () => {
-        const existing = this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE);
-        if (existing.length > 0 && existing[0]) {
-          await this.app.workspace.revealLeaf(existing[0]);
-          return;
-        }
-        const leaf = Platform.isMobile
-          ? this.app.workspace.getLeftLeaf(false)
-          : this.app.workspace.getRightLeaf(false);
-        if (leaf) {
-          await leaf.setViewState({ type: NAVIGATOR_VIEW_TYPE, active: true });
-          await this.app.workspace.revealLeaf(leaf);
-        }
+        const side = Platform.isMobile ? this.settings.mobileNavigatorSide : 'right';
+        await this.openNavigatorInSidebar(side);
       },
     });
 

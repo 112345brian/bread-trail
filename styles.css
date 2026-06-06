@@ -1341,21 +1341,23 @@
   color: inherit;
 }
 
-/* Toolbar */
+/* Toolbar — row 1: mode group + action buttons.
+   Matches Notebook Navigator's compact 32px header density. */
 .bread-trail-nav-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 4px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
 }
 
+/* Segmented mode group — subtle pill, like NN's nav bg chip */
 .bread-trail-nav-mode-group {
   display: flex;
   gap: 2px;
   background: var(--background-modifier-hover);
-  border-radius: 6px;
+  border-radius: var(--radius-s);
   padding: 2px;
 }
 
@@ -1363,9 +1365,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 4px;
+  width: 28px;
+  height: 25px;
+  border-radius: var(--radius-s);
   color: var(--text-muted);
   cursor: pointer;
   background: transparent;
@@ -1381,22 +1383,24 @@
 .bread-trail-nav-mode-btn.is-active {
   background: var(--background-primary);
   color: var(--text-normal);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 
 .bread-trail-nav-mode-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
-/* Action buttons (preview toggle, reset, go-to-active) */
+/* Action buttons — match NN: transparent, horizontal padding, same height as mode btns */
 .bread-trail-nav-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 4px;
+  height: 25px;
+  padding: 0 6px;
+  min-width: 26px;
+  width: auto;
+  border-radius: var(--radius-s);
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -1418,13 +1422,13 @@
   color: var(--color-accent);
 }
 
-
 .bread-trail-nav-action-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
-/* Browser nav row: back button + folder title + sort — full width below the mode buttons */
+/* Browser nav row: back button + folder title + sort — full width below the mode buttons.
+   Styled like NN's list pane header: compact, muted breadcrumb title. */
 .bread-trail-nav-toolbar {
   flex-wrap: wrap;
 }
@@ -1432,15 +1436,10 @@
 .bread-trail-nav-browser-nav {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
   min-width: 0;
-  padding-top: 4px;
-}
-
-/* Desktop: remove from flow entirely when inactive */
-.bread-trail-nav-browser-nav.is-inactive {
-  display: none;
+  padding: 4px 0;
 }
 
 /* Mobile: browser nav does not appear in the toolbar (it's a sticky header
@@ -1449,14 +1448,15 @@
   display: none;
 }
 
+/* Back button — no border, matches NN's plain icon button style */
 .bread-trail-nav-back-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  border: 1px solid var(--background-modifier-border);
+  width: 25px;
+  height: 25px;
+  border-radius: var(--radius-s);
+  border: none;
   background: transparent;
   color: var(--text-muted);
   flex-shrink: 0;
@@ -1474,22 +1474,24 @@
 }
 
 .bread-trail-nav-back-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
 }
 
+/* Title — 13px bold muted, matching NN's list header breadcrumb */
 .bread-trail-nav-browser-title {
-  font-size: 0.85em;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-normal);
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  padding-left: 2px;
 }
 
 .bread-trail-nav-browser-title.is-roots {
-  color: var(--text-muted);
+  color: var(--text-faint);
   font-weight: 500;
   font-style: italic;
 }
@@ -1560,12 +1562,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
+  height: 25px;
+  padding: 0 6px;
+  min-width: 25px;
+  width: auto;
+  border-radius: var(--radius-s);
   border: none;
   background: transparent;
-  color: var(--text-faint);
+  color: var(--text-muted);
   cursor: pointer;
 }
 
@@ -1575,8 +1579,8 @@
 }
 
 .bread-trail-nav-sort-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
 }
 
 .bread-trail-nav-section-icon {
