@@ -149,6 +149,7 @@ export default class BreadTrail extends Plugin {
 
   // Floating navigator panels — keyed by view, one entry per side
   private floatingPanels = new Map<MarkdownView, { left?: FloatingNavPanel; right?: FloatingNavPanel }>();
+  private summonedFloatingPanel: { view: MarkdownView; panel: FloatingNavPanel } | null = null;
 
   async onload() {
     this.settings = normalizeSettings((await this.loadData()) as Partial<BreadTrailSettings> | null ?? {});
@@ -327,6 +328,25 @@ export default class BreadTrail extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: 'show-floating-table-of-contents',
+      name: 'Show floating table of contents',
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        const file = view?.file;
+        if (checking) return !!file && file.extension === 'md';
+        if (!view || !file) return false;
+
+        if (!this.bc) {
+          new BreadcrumbsMissingModal(this.app).open();
+          return true;
+        }
+
+        this.showFloatingTableOfContents(view);
+        return true;
+      },
+    });
+
     // Keep navigator in sync with active file and bc events
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => {
@@ -353,6 +373,9 @@ export default class BreadTrail extends Plugin {
             panels.right?.refresh();
           }
         }
+        if (this.summonedFloatingPanel?.view.file?.path === changedFile.path) {
+          this.summonedFloatingPanel.panel.refresh();
+        }
         if (this.bc) this.handleAutoSequence(changedFile);
       }),
     );
@@ -374,6 +397,15 @@ export default class BreadTrail extends Plugin {
         return true;
       },
     });
+  }
+
+  onunload() {
+    for (const panels of this.floatingPanels.values()) {
+      panels.left?.detach();
+      panels.right?.detach();
+    }
+    this.floatingPanels.clear();
+    this.detachSummonedFloatingPanel();
   }
 
   private injectValidationWarning(el: HTMLElement, ctx: MarkdownPostProcessorContext) {
@@ -441,6 +473,9 @@ export default class BreadTrail extends Plugin {
         this.floatingPanels.delete(view);
       }
     }
+    if (this.summonedFloatingPanel && !currentViews.has(this.summonedFloatingPanel.view)) {
+      this.detachSummonedFloatingPanel();
+    }
 
     // Add/remove panels for each visible view
     for (const view of currentViews) {
@@ -475,6 +510,29 @@ export default class BreadTrail extends Plugin {
       panels.left?.refresh();
       panels.right?.refresh();
     }
+    this.summonedFloatingPanel?.panel.refresh();
+  }
+
+  private showFloatingTableOfContents(view: MarkdownView): void {
+    if (this.summonedFloatingPanel?.view === view) {
+      this.summonedFloatingPanel.panel.refresh();
+      return;
+    }
+
+    this.detachSummonedFloatingPanel();
+
+    const side = this.settings.floatingNavLeft && !this.settings.floatingNavRight ? 'left' : 'right';
+    const panel = new FloatingNavPanel(view, this.app, () => this.settings, () => this.bc, side, () => {
+      this.detachSummonedFloatingPanel();
+      void this.openNavigatorInSidebar(side);
+    });
+    panel.attach();
+    this.summonedFloatingPanel = { view, panel };
+  }
+
+  private detachSummonedFloatingPanel(): void {
+    this.summonedFloatingPanel?.panel.detach();
+    this.summonedFloatingPanel = null;
   }
 
   /** Open (or reveal) the bread-trail navigator in the specified sidebar. */
