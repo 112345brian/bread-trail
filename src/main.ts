@@ -440,45 +440,52 @@ export default class BreadTrail extends Plugin {
     modal.open();
   }
 
-  /** On mobile: swipe up on the leftmost edge of the screen opens the tile
-   *  explorer modal. A vertical swipe-up is orthogonal to Obsidian's horizontal
-   *  swipe-right (sidebar), so the two gestures never conflict. Uses capture
-   *  phase so we see events before Obsidian's inner handlers. */
+  /** On mobile: a two-finger spread (pinch-out) anywhere on screen opens the
+   *  tile explorer modal. Pinch-out is a natural "expand / bring forward" gesture
+   *  and doesn't conflict with any of Obsidian's built-in single-finger gestures. */
   private registerMobileTapZone() {
-    const EDGE_WIDTH   = 44;   // px from left edge (standard touch target)
-    const MIN_SWIPE_UP = 40;   // minimum upward movement to trigger (px)
-    const MAX_HORIZ    = 30;   // max horizontal drift before we ignore it (px)
+    const MIN_SPREAD = 55;   // fingers must spread at least this many px to trigger
 
-    let startX = -1, startY = 0;
+    let startDist = 0;
+    let maxDist   = 0;
+    let active    = false;
 
-    const onTouchStart = (e: TouchEvent) => {
-      const t = e.touches[0];
-      if (!t || t.clientX > EDGE_WIDTH) { startX = -1; return; }
-      startX = t.clientX;
-      startY = t.clientY;
+    const fingerDist = (touches: TouchList) => {
+      const a = touches[0]!, b = touches[1]!;
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     };
 
-    const onTouchEnd = (e: TouchEvent) => {
-      if (startX < 0) return;
-      const t = e.changedTouches[0];
-      if (!t) { startX = -1; return; }
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-      startX = -1;
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) { active = false; return; }
+      active    = true;
+      startDist = fingerDist(e.touches);
+      maxDist   = startDist;
+    };
 
-      // Swipe up: sufficient upward movement, not drifting too far sideways
-      if (dy < -MIN_SWIPE_UP && Math.abs(dx) < MAX_HORIZ && this.settings.mobileTapExplorer) {
+    const onMove = (e: TouchEvent) => {
+      if (!active || e.touches.length !== 2) return;
+      const d = fingerDist(e.touches);
+      if (d > maxDist) maxDist = d;
+    };
+
+    const onEnd = () => {
+      if (!active) return;
+      active = false;
+      if (maxDist - startDist >= MIN_SPREAD && this.settings.mobileTapExplorer) {
         this.openExplorerModal();
       }
     };
 
-    // capture:true — see events before Obsidian's inner handlers
-    const opts = { passive: true, capture: true } as const;
-    document.addEventListener('touchstart', onTouchStart, opts);
-    document.addEventListener('touchend',   onTouchEnd,   opts);
+    const opts = { passive: true } as const;
+    document.addEventListener('touchstart',  onStart, opts);
+    document.addEventListener('touchmove',   onMove,  opts);
+    document.addEventListener('touchend',    onEnd,   opts);
+    document.addEventListener('touchcancel', onEnd,   opts);
     this.register(() => {
-      document.removeEventListener('touchstart', onTouchStart, { capture: true });
-      document.removeEventListener('touchend',   onTouchEnd,   { capture: true });
+      document.removeEventListener('touchstart',  onStart);
+      document.removeEventListener('touchmove',   onMove);
+      document.removeEventListener('touchend',    onEnd);
+      document.removeEventListener('touchcancel', onEnd);
     });
   }
 

@@ -82,7 +82,7 @@ export interface BreadTrailSettings {
   floatingNavLeft: boolean;
   /** Show a floating navigator panel on the right edge of each note. */
   floatingNavRight: boolean;
-  /** On mobile: swipe up on the left edge of the screen to open the tile explorer. */
+  /** On mobile: pinch-out (two-finger spread) anywhere to open the tile explorer. */
   mobileTapExplorer: boolean;
   /** Replace the file-path breadcrumb in note headers with BC ancestor links. */
   headerBreadcrumbs: boolean;
@@ -515,8 +515,8 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     if (Platform.isMobile) {
       new Setting(el)
-        .setName('Swipe up on left edge to open explorer')
-        .setDesc('Swipe upward on the leftmost edge of the screen to open the tile explorer. Swiping right still opens the sidebar as usual.')
+        .setName('Pinch to open explorer')
+        .setDesc('Spread two fingers apart anywhere on screen to open the tile explorer.')
         .addToggle((t) => {
           t.setValue(this.plugin.settings.mobileTapExplorer);
           t.onChange(async (v) => { this.plugin.settings.mobileTapExplorer = v; await this.save(); });
