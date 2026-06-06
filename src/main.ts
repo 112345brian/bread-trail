@@ -1,5 +1,6 @@
 import { App, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Modal, Notice, Plugin, TFile, setIcon } from 'obsidian';
 import { OutlineModal } from './OutlineModal';
+import { ExplorerModal } from './ExplorerModal';
 import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
 import { GraphSwitcher } from './GraphSwitcher';
 import { NavigatorView, NAVIGATOR_VIEW_TYPE } from './NavigatorView';
@@ -74,7 +75,7 @@ class BreadcrumbsMissingModal extends Modal {
     titleEl.setText('Breadcrumbs plugin required');
 
     contentEl.createEl('p', {
-      text: 'Bread trail requires the breadcrumbs plugin to work.',
+      text: 'BreadTrail requires the breadcrumbs plugin to work.',
     });
 
     contentEl.createEl('p', {
@@ -86,7 +87,7 @@ class BreadcrumbsMissingModal extends Modal {
     steps.createEl('li', { text: 'Open settings → community plugins' });
     steps.createEl('li', { text: 'Search for "breadcrumbs"' });
     steps.createEl('li', { text: 'Install and enable it' });
-    steps.createEl('li', { text: 'Reload bread trail' });
+    steps.createEl('li', { text: 'Reload BreadTrail' });
 
     const btnContainer = contentEl.createDiv({ cls: 'modal-button-container' });
 
@@ -112,7 +113,7 @@ class TrailModal extends Modal {
 
   onOpen() {
     const { contentEl, titleEl } = this;
-    titleEl.setText('Bread trail');
+    titleEl.setText('BreadTrail');
 
     contentEl.createEl('p', {
       text: `Viewing: ${this.file.basename}`,
@@ -162,6 +163,7 @@ export default class BreadTrail extends Plugin {
   private floatingPanels = new Map<MarkdownView, { left?: FloatingNavPanel; right?: FloatingNavPanel }>();
   private summonedFloatingPanel: { view: MarkdownView; panel: FloatingNavPanel } | null = null;
   private breadcrumbsGraphEventRegistered = false;
+
 
   async onload() {
     this.settings = normalizeSettings((await this.loadData()) as Partial<BreadTrailSettings> | null ?? {});
@@ -346,6 +348,7 @@ export default class BreadTrail extends Plugin {
         // New leaves may have appeared; sync then refresh content
         this.syncFloatingNavPanels();
         this.refreshFloatingNavPanels();
+        this.updateAllHeaderBreadcrumbs();
       }),
     );
 
@@ -371,6 +374,16 @@ export default class BreadTrail extends Plugin {
         if (this.ensureBreadcrumbs()) this.handleAutoSequence(changedFile);
       }),
     );
+
+    this.addCommand({
+      id: 'open-explorer',
+      name: 'Open tile explorer',
+      callback: () => {
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
+        new ExplorerModal(this.app, bc, this.settings.graphLabelProperty).open();
+      },
+    });
 
     this.addCommand({
       id: 'graph-switch',
@@ -399,6 +412,7 @@ export default class BreadTrail extends Plugin {
     }
     this.floatingPanels.clear();
     this.detachSummonedFloatingPanel();
+    this.clearAllHeaderBreadcrumbs();
   }
 
   private injectValidationWarning(el: HTMLElement, ctx: MarkdownPostProcessorContext) {
@@ -434,8 +448,10 @@ export default class BreadTrail extends Plugin {
   }
 
   private ensureBreadcrumbs(): BreadcrumbsPlugin | null {
+    const prev = this.bc;
     this.bc = getBreadcrumbs(this.app);
-    if (this.bc) this.handleBreadcrumbsReady(this.bc, false);
+    // Only run first-time setup when BC transitions from absent → present
+    if (this.bc && !prev) this.handleBreadcrumbsReady(this.bc, false);
     return this.bc;
   }
 
@@ -453,23 +469,25 @@ export default class BreadTrail extends Plugin {
     }
 
     if (this.settings.showStartupNotice) {
-      new Notice('Bread trail: Breadcrumbs plugin not found.');
+      new Notice('BreadTrail: Breadcrumbs plugin not found.');
     }
     new BreadcrumbsMissingModal(this.app).open();
   }
 
   private handleBreadcrumbsReady(bc: BreadcrumbsPlugin, showNotice: boolean): void {
     if (showNotice) {
-      new Notice('Bread trail loaded — breadcrumbs detected.');
+      new Notice('BreadTrail loaded — breadcrumbs detected.');
     }
 
     this.getNavigatorView()?.scheduleRefresh();
+    this.updateAllHeaderBreadcrumbs();
 
     if (!this.breadcrumbsGraphEventRegistered) {
       try {
         bc.events.on('graph-update', () => {
           this.getNavigatorView()?.scheduleRefresh();
           this.refreshFloatingNavPanels();
+          this.updateAllHeaderBreadcrumbs();
         });
         this.breadcrumbsGraphEventRegistered = true;
       } catch {
@@ -592,10 +610,138 @@ export default class BreadTrail extends Plugin {
     }
   }
 
-  private getNavigatorView(): NavigatorView | null {
+  getNavigatorView(): NavigatorView | null {
     const leaves = this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE);
     const view = leaves[0]?.view;
     return view instanceof NavigatorView ? view : null;
+  }
+
+  // ── Header breadcrumb injection ────────────────────────────────────────────
+
+  /**
+   * Walk up the BC hierarchy from `file` via up/down edges, returning the
+   * ancestor chain ordered from oldest → immediate parent (max 20 hops).
+   */
+  private getBcAncestorChain(file: TFile, bc: BreadcrumbsPlugin): TFile[] {
+    const seen = new Set<string>([file.path]);
+    const parents: TFile[] = [];
+
+    // Collect all direct `up` parents (outgoing up edges from this file)
+    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
+      if (e.edge_type?.toLowerCase() !== 'up') continue;
+      const path = e.target_path?.(bc.graph) ?? e.target;
+      if (!path || seen.has(path)) continue;
+      const found = this.app.vault.getAbstractFileByPath(path);
+      if (found instanceof TFile) { seen.add(path); parents.push(found); }
+    }
+
+    // Also collect parents implied by incoming `down` edges (reciprocal links)
+    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
+      if (e.edge_type?.toLowerCase() !== 'down') continue;
+      const path = e.source_path?.(bc.graph) ?? e.source;
+      if (!path || seen.has(path)) continue;
+      const found = this.app.vault.getAbstractFileByPath(path);
+      if (found instanceof TFile) { seen.add(path); parents.push(found); }
+    }
+
+    return parents;
+  }
+
+  private getBcLabel(file: TFile): string {
+    const prop = this.settings.graphLabelProperty;
+    if (!prop) return file.basename;
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) return file.basename;
+    const val: unknown = fm[prop];
+    if (Array.isArray(val) && val.length > 0) return String(val[0]);
+    if (typeof val === 'string' && val.trim()) return val.trim();
+    return file.basename;
+  }
+
+  /** Inject / refresh BC ancestor crumbs into the view header of every open markdown leaf. */
+  updateAllHeaderBreadcrumbs(): void {
+    if (!this.settings.headerBreadcrumbs) {
+      this.clearAllHeaderBreadcrumbs();
+      return;
+    }
+    const bc = this.bc ?? getBreadcrumbs(this.app);
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (leaf.view instanceof MarkdownView) {
+        this.updateHeaderBreadcrumb(leaf.view, bc);
+      }
+    });
+  }
+
+  private updateHeaderBreadcrumb(view: MarkdownView, bc: BreadcrumbsPlugin | null): void {
+    // Remove any previously injected crumbs
+    view.containerEl.querySelectorAll('.bt-header-crumbs').forEach((el) => el.remove());
+
+    const file = view.file;
+    if (!file || !bc) return;
+
+    let ancestors = this.getBcAncestorChain(file, bc);
+    if (ancestors.length === 0) return;
+    const depth = this.settings.headerBreadcrumbsDepth;
+    if (depth > 0) ancestors = ancestors.slice(-depth);
+
+    const viewHeader = view.containerEl.querySelector<HTMLElement>('.view-header');
+    if (!viewHeader) return;
+
+    // Build the crumbs element
+    const crumbsEl = activeDocument.createElement('div');
+    crumbsEl.className = 'bt-header-crumbs';
+
+    for (let i = 0; i < ancestors.length; i++) {
+      const ancestor = ancestors[i]!;
+      const crumb = crumbsEl.createEl('span', {
+        cls: 'bt-header-crumb-item',
+        text: this.getBcLabel(ancestor),
+        attr: { 'aria-label': ancestor.path },
+      });
+      crumb.addEventListener('click', (e) => {
+        const newTab = e.ctrlKey || e.metaKey;
+        const leaf = newTab
+          ? this.app.workspace.getLeaf('tab')
+          : (this.app.workspace.getMostRecentLeaf() ?? view.leaf);
+        void leaf.openFile(ancestor);
+      });
+      // Always add a trailing separator — the native title follows our crumbs
+      crumbsEl.createSpan({ cls: 'bt-header-crumb-sep', text: '/' });
+    }
+
+    // Inject into the title container, before the note title — this is where
+    // Obsidian renders the file path / BC breadcrumb ("TOC / Home" row)
+    const titleContainer = viewHeader.querySelector<HTMLElement>('.view-header-title-container');
+    const titleEl = titleContainer?.querySelector('.view-header-title');
+    if (titleEl) {
+      titleEl.insertAdjacentElement('beforebegin', crumbsEl);
+    } else if (titleContainer) {
+      titleContainer.prepend(crumbsEl);
+    } else {
+      viewHeader.appendChild(crumbsEl);
+    }
+
+    // Hide ALL children of the title container except the title itself and our crumbs —
+    // the BC plugin renders multiple sibling elements (breadcrumb text, separators, etc.)
+    if (titleContainer) {
+      for (const child of Array.from(titleContainer.children)) {
+        if (child.classList.contains('view-header-title') || child.classList.contains('bt-header-crumbs')) continue;
+        (child as HTMLElement).dataset.btHidden = 'true';
+        (child as HTMLElement).style.display = 'none';
+      }
+    }
+  }
+
+  private clearAllHeaderBreadcrumbs(): void {
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (!(leaf.view instanceof MarkdownView)) return;
+      leaf.view.containerEl.querySelectorAll('.bt-header-crumbs').forEach((el) => el.remove());
+      // Restore any elements we hid
+      leaf.view.containerEl.querySelectorAll<HTMLElement>('[data-bt-hidden]').forEach((el) => {
+        el.style.display = '';
+        delete el.dataset.btHidden;
+      });
+    });
   }
 
   /** Debounced auto-sequencer: fires 2s after the last metadata change on a file.

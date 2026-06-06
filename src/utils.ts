@@ -50,16 +50,72 @@ export function formatDateValue(raw: string | number): string {
   }
 }
 
-/** Strip YAML frontmatter and return the first N lines of body content.
- *  Used for rendered markdown previews — keeps tables, lists, etc. intact. */
-export function extractContentSnippet(content: string, maxLines = 12): string {
+/**
+ * Returns true when the note's body starts with a transcluded Base or an
+ * inline base/dataview block in the first `checkLines` non-blank lines.
+ *
+ * Detects:
+ *   ![[anything.base]]          — transcluded Obsidian Base file
+ *   ![[anything.base|alias]]    — same with an alias
+ *   ```base … ```               — inline base block
+ *   ```dataview … ```           — inline Dataview block
+ */
+export function startsWithBaseTransclusion(content: string, checkLines = 3): boolean {
   let body = content;
   if (body.startsWith('---')) {
     const end = body.indexOf('\n---', 3);
     if (end !== -1) body = body.slice(end + 4).trimStart();
   }
-  const lines = body.split('\n');
-  return lines.slice(0, maxLines).join('\n').trim();
+
+  let seen = 0;
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;                         // skip blank lines
+    if (seen >= checkLines) break;
+    seen++;
+
+    // Transcluded .base file: ![[name.base]] or ![[name.base|alias]]
+    if (/^!\[\[[^\]]+\.base(?:\|[^\]]*)?\]\]$/.test(trimmed)) return true;
+
+    // Fenced code block opening: ```base or ```dataview
+    if (/^```(base|dataview)\b/.test(trimmed)) return true;
+  }
+  return false;
+}
+
+/** Strip YAML frontmatter and return the first N lines of body content.
+ *  Used for rendered markdown previews — keeps tables, lists, etc. intact.
+ *
+ *  Also de-indents the snippet so that list items whose minimum indentation
+ *  is > 0 (e.g. a note whose entire content is inside one parent bullet) are
+ *  shifted left. This prevents incorrectly nested rendering when the visible
+ *  note content is entirely at one logical indent level. */
+export function extractContentSnippet(content: string, maxLines = 12): string {
+  let body = content;
+
+  // Strip YAML frontmatter (handles both \n and \r\n)
+  if (body.startsWith('---')) {
+    const end = body.indexOf('\n---', 3);
+    if (end !== -1) body = body.slice(end + 4).trimStart();
+  }
+
+  const lines = body.split('\n').slice(0, maxLines);
+
+  // Find the minimum indentation across non-empty lines so we can strip it.
+  // This normalises snippets where all content is nested one level deeper
+  // than it should appear (e.g. inside a single parent bullet in the source).
+  const minIndent = lines.reduce((min, line) => {
+    if (!line.trim()) return min;               // skip blank lines
+    const indent = /^\s*/.exec(line)?.[0].length ?? 0;
+    return Math.min(min, indent);
+  }, Infinity);
+
+  const deindent = Number.isFinite(minIndent) && minIndent > 0;
+  const result = deindent
+    ? lines.map((l) => l.slice(minIndent)).join('\n')
+    : lines.join('\n');
+
+  return result.trim();
 }
 
 /** Strip YAML frontmatter and markdown syntax, return plain-text excerpt. */

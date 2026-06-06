@@ -6,6 +6,9 @@
  * (which has `position: relative` in Obsidian). CSS handles hover expand/collapse
  * entirely — no JS mouse polling needed.
  *
+ * Cards use the same `.bread-trail-nav-card-*` CSS classes as NavigatorView so
+ * the floating panel looks visually identical to the sidebar context mode.
+ *
  * Lifecycle:
  *   1. `new FloatingNavPanel(...)` — create (no DOM yet)
  *   2. `attach()` — inject into the view's DOM
@@ -13,7 +16,7 @@
  *   4. `detach()` — remove from DOM
  */
 
-import { App, MarkdownView, TFile, setIcon } from 'obsidian';
+import { App, MarkdownView, Menu, TFile, setIcon } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 import { formatDateValue } from './utils';
@@ -25,6 +28,8 @@ type ChainRelation = 'previous' | 'current' | 'next';
 interface ChainNote {
   file: TFile;
   relation: ChainRelation;
+  seqPos: number;
+  seqTotal: number;
 }
 
 interface Neighborhood {
@@ -84,9 +89,11 @@ export class FloatingNavPanel {
   private build(): void {
     const file = this.view.file;
     const bc = this.getBc();
-    const inner = this.container.createDiv('bt-float-inner');
 
-    // Toolbar (pin button)
+    // Use `bread-trail-nav` so the existing card/button CSS resets apply here too
+    const inner = this.container.createDiv('bt-float-inner bread-trail-nav');
+
+    // ── Toolbar ──────────────────────────────────────────────────────────────
     const toolbar = inner.createDiv('bt-float-toolbar');
     const pinBtn = toolbar.createEl('button', {
       cls: 'bt-float-pin-btn',
@@ -114,14 +121,14 @@ export class FloatingNavPanel {
     }
 
     if (parents.length > 0) {
-      this.renderSection(inner, 'Parents', 'arrow-up', parents, file, metaProps);
+      this.renderSection(inner, 'Parents', 'arrow-up', parents, file, metaProps, null);
     }
     for (const { path: chainPath, notes } of chains) {
       this.renderChain(inner, chainPath || 'Chain', notes, file, metaProps);
     }
     if (children.length > 0) {
       children.sort((a, b) => a.basename.localeCompare(b.basename));
-      this.renderSection(inner, 'Children', 'arrow-down', children, file, metaProps);
+      this.renderSection(inner, 'Children', 'arrow-down', children, file, metaProps, null);
     }
   }
 
@@ -191,7 +198,6 @@ export class FloatingNavPanel {
   ): TFile | null {
     const nextType = chainPath ? `next.${chainPath}` : 'next';
     const prevType = chainPath ? `prev.${chainPath}` : 'prev';
-    // Incoming next.* → source is our prev
     for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
       if (e.edge_type?.toLowerCase() !== nextType) continue;
       const path = e.source_path?.(bc.graph) ?? e.source;
@@ -199,7 +205,6 @@ export class FloatingNavPanel {
       const f = this.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) return f;
     }
-    // Outgoing prev.* → target is our prev
     for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
       if (e.edge_type?.toLowerCase() !== prevType) continue;
       const path = e.target_path?.(bc.graph) ?? e.target;
@@ -218,7 +223,6 @@ export class FloatingNavPanel {
   ): TFile | null {
     const nextType = chainPath ? `next.${chainPath}` : 'next';
     const prevType = chainPath ? `prev.${chainPath}` : 'prev';
-    // Outgoing next.* → target is our next
     for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
       if (e.edge_type?.toLowerCase() !== nextType) continue;
       const path = e.target_path?.(bc.graph) ?? e.target;
@@ -226,7 +230,6 @@ export class FloatingNavPanel {
       const f = this.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) return f;
     }
-    // Incoming prev.* → source is our next
     for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
       if (e.edge_type?.toLowerCase() !== prevType) continue;
       const path = e.source_path?.(bc.graph) ?? e.source;
@@ -267,11 +270,36 @@ export class FloatingNavPanel {
 
     if (before.length === 0 && after.length === 0) return [];
 
+    const total = before.length + 1 + after.length;
     const chain: ChainNote[] = [];
-    before.forEach((f) => chain.push({ file: f, relation: 'previous' }));
-    chain.push({ file, relation: 'current' });
-    after.forEach((f) => chain.push({ file: f, relation: 'next' }));
+    before.forEach((f, i)  => chain.push({ file: f, relation: 'previous', seqPos: i + 1, seqTotal: total }));
+    chain.push({ file, relation: 'current', seqPos: before.length + 1, seqTotal: total });
+    after.forEach((f, i)   => chain.push({ file: f, relation: 'next',     seqPos: before.length + 2 + i, seqTotal: total }));
     return chain;
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  /** Return the display label for a file (alias from graphLabelProperty, or basename). */
+  private getLabel(file: TFile): string {
+    const prop = this.getSettings().graphLabelProperty;
+    if (!prop) return file.basename;
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) return file.basename;
+    const val = fm[prop];
+    if (Array.isArray(val) && val.length > 0) return String(val[0]);
+    if (val && typeof val === 'string') return val;
+    return file.basename;
+  }
+
+  /** Read a frontmatter value as a string, handling arrays. */
+  private getFmString(file: TFile, key: string): string | null {
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) return null;
+    const val = fm[key];
+    if (val == null) return null;
+    if (Array.isArray(val)) return val.length > 0 ? String(val[0]) : null;
+    return String(val);
   }
 
   // ── DOM rendering ──────────────────────────────────────────────────────────
@@ -283,14 +311,15 @@ export class FloatingNavPanel {
     files: TFile[],
     activeFile: TFile,
     metaProps: string[],
+    _sort: null,
   ): void {
-    const section = parent.createDiv('bt-float-section');
-    const header = section.createDiv('bt-float-section-header');
-    const iconEl = header.createSpan('bt-float-section-icon');
+    const section = parent.createDiv('bread-trail-nav-section bt-float-section');
+    const header = section.createDiv('bread-trail-nav-section-header');
+    const iconEl = header.createSpan('bread-trail-nav-section-icon');
     setIcon(iconEl, icon);
-    header.createSpan({ text: label, cls: 'bt-float-section-label' });
+    header.createSpan({ text: label, cls: 'bread-trail-nav-section-label' });
     for (const file of files) {
-      this.renderRow(section, file, file.path === activeFile.path, null, metaProps);
+      this.renderCard(section, file, 'child', undefined, undefined, file.path === activeFile.path, metaProps);
     }
   }
 
@@ -301,48 +330,88 @@ export class FloatingNavPanel {
     activeFile: TFile,
     metaProps: string[],
   ): void {
-    const section = parent.createDiv('bt-float-section');
-    const header = section.createDiv('bt-float-section-header');
-    const iconEl = header.createSpan('bt-float-section-icon');
+    const total = notes[0]?.seqTotal ?? notes.length;
+    const section = parent.createDiv('bread-trail-nav-section bt-float-section');
+    const header = section.createDiv('bread-trail-nav-section-header');
+    const iconEl = header.createSpan('bread-trail-nav-section-icon');
     setIcon(iconEl, 'list-ordered');
-    header.createSpan({ text: label, cls: 'bt-float-section-label' });
-    for (const { file, relation } of notes) {
-      this.renderRow(section, file, file.path === activeFile.path, relation, metaProps);
+    header.createSpan({ text: `${label}  ·  ${total}`, cls: 'bread-trail-nav-section-label' });
+    for (const { file, relation, seqPos } of notes) {
+      this.renderCard(section, file, relation, seqPos, total, file.path === activeFile.path, metaProps);
     }
   }
 
-  private renderRow(
+  /**
+   * Renders a card using the same `.bread-trail-nav-card-*` CSS classes as
+   * NavigatorView so the floating panel looks identical to the sidebar.
+   * No markdown preview is rendered (keeps the float lightweight).
+   */
+  private renderCard(
     parent: HTMLElement,
     file: TFile,
+    relation: ChainRelation | 'child' | 'parent',
+    seqPos: number | undefined,
+    _seqTotal: number | undefined,
     isActive: boolean,
-    relation: ChainRelation | null,
     metaProps: string[],
   ): void {
-    const row = parent.createDiv('bt-float-row');
-    if (isActive) row.addClass('is-active');
-    if (relation) row.dataset['relation'] = relation;
+    const isCurrent = relation === 'current';
+    const card = parent.createDiv(
+      `bread-trail-nav-card bread-trail-nav-card-${relation}${isCurrent || isActive ? ' is-current' : ''}`,
+    );
 
-    row.createSpan({ text: file.basename, cls: 'bt-float-row-title' });
+    // Title row
+    const titleRow = card.createDiv('bread-trail-nav-card-title-row');
+    if (seqPos !== undefined) {
+      titleRow.createSpan({ text: String(seqPos), cls: 'bread-trail-nav-card-pos' });
+    }
+    titleRow.createSpan({ text: this.getLabel(file), cls: 'bread-trail-nav-card-title' });
 
-    // Show the first matching meta property (keeping the float compact)
+    // Meta rows — all configured props, value-only (same as sidebar)
     if (metaProps.length > 0) {
-      const fm: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (fm) {
-        for (const prop of metaProps) {
-          const val = typeof fm === 'object' && !Array.isArray(fm) ? (fm as Record<string, unknown>)[prop] : undefined;
-          if (val == null) continue;
-          const raw = typeof val === 'number' || typeof val === 'string' ? val : '';
-          if (!raw) continue;
-          row.createSpan({ text: formatDateValue(raw), cls: 'bt-float-row-meta' });
-          break;
-        }
+      let hasAny = false;
+      const metaEl = card.createDiv('bread-trail-nav-card-meta');
+      for (const prop of metaProps) {
+        const val = this.getFmString(file, prop);
+        if (!val) continue;
+        hasAny = true;
+        const row = metaEl.createDiv('bread-trail-nav-card-meta-row');
+        row.createSpan({ text: formatDateValue(val), cls: 'bread-trail-nav-card-meta-val' });
       }
+      if (!hasAny) metaEl.remove();
     }
 
-    row.addEventListener('click', (e) => {
+    card.addEventListener('click', (e) => {
       const newTab = e.ctrlKey || e.metaKey;
       const leaf = newTab ? this.app.workspace.getLeaf('tab') : this.view.leaf;
       void leaf.openFile(file);
+    });
+
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const menu = new Menu();
+      this.app.workspace.trigger('file-menu', menu, file, 'bread-trail-float', this.view.leaf);
+      this.addBreadbakeMenuItem(menu, file);
+      menu.showAtMouseEvent(e);
+    });
+  }
+
+  private addBreadbakeMenuItem(menu: Menu, file: TFile): void {
+    const plugins = (this.app as { plugins?: { plugins?: Record<string, unknown> } }).plugins;
+    const breadbake = plugins?.plugins?.['breadbake'];
+    if (!breadbake) return;
+
+    menu.addSeparator();
+    menu.addItem((item) => {
+      item
+        .setTitle('Bake note')
+        .setIcon('flame')
+        .onClick(async () => {
+          const leaf = this.app.workspace.getMostRecentLeaf() ?? this.view.leaf;
+          await leaf.openFile(file);
+          (this.app as { commands?: { executeCommandById(id: string): void } })
+            .commands?.executeCommandById('breadbake:bake-active-file');
+        });
     });
   }
 }

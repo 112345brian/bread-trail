@@ -82,10 +82,19 @@ export interface BreadTrailSettings {
   floatingNavLeft: boolean;
   /** Show a floating navigator panel on the right edge of each note. */
   floatingNavRight: boolean;
+  /** Replace the file-path breadcrumb in note headers with BC ancestor links. */
+  headerBreadcrumbs: boolean;
+  /** How many ancestor levels to show (0 = all). */
+  headerBreadcrumbsDepth: number;
   /** File paths pinned as favorites in settings (shown in Favorites view alongside bread-trail.favorite: true notes). */
   navigatorFavorites: string[];
   /** Frontmatter properties shown in Favorites view cards. */
   navigatorFavoritesMetaProperties: string[];
+  /** When on, notes whose first 3 body lines contain a transcluded Base (![[*.base]])
+   *  or an inline base/dataview block are shown without a preview excerpt. */
+  navigatorSkipPreviewForBases: boolean;
+  /** Number of content lines shown in the card preview (default 3). */
+  navigatorPreviewLines: number;
   /** Folder paths whose contents are hidden from the navigator (prefix match). */
   navigatorExcludeFolders: string[];
   /** Exact file paths to hide from the navigator. */
@@ -150,8 +159,12 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   navigatorSortField: '',
   floatingNavLeft: false,
   floatingNavRight: false,
+  headerBreadcrumbs: false,
+  headerBreadcrumbsDepth: 0,
   navigatorFavorites: [],
   navigatorFavoritesMetaProperties: [],
+  navigatorSkipPreviewForBases: true,
+  navigatorPreviewLines: 3,
   navigatorExcludeFolders: [],
   navigatorExcludeFiles: [],
   navigatorExcludeFrontmatter: [],
@@ -248,12 +261,16 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     navigatorSortField: typeof settings.navigatorSortField === 'string' ? settings.navigatorSortField.trim() : '',
     floatingNavLeft: typeof settings.floatingNavLeft === 'boolean' ? settings.floatingNavLeft : false,
     floatingNavRight: typeof settings.floatingNavRight === 'boolean' ? settings.floatingNavRight : false,
+    headerBreadcrumbs: typeof settings.headerBreadcrumbs === 'boolean' ? settings.headerBreadcrumbs : false,
+    headerBreadcrumbsDepth: typeof settings.headerBreadcrumbsDepth === 'number' ? settings.headerBreadcrumbsDepth : 0,
     navigatorFavorites: Array.isArray(settings.navigatorFavorites)
       ? (settings.navigatorFavorites as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((s) => s.trim())
       : [],
     navigatorFavoritesMetaProperties: Array.isArray(settings.navigatorFavoritesMetaProperties)
       ? (settings.navigatorFavoritesMetaProperties as unknown[]).filter((p): p is string => typeof p === 'string')
       : [],
+    navigatorSkipPreviewForBases: typeof settings.navigatorSkipPreviewForBases === 'boolean' ? settings.navigatorSkipPreviewForBases : true,
+    navigatorPreviewLines: typeof settings.navigatorPreviewLines === 'number' && settings.navigatorPreviewLines > 0 ? Math.floor(settings.navigatorPreviewLines) : 3,
     navigatorExcludeFolders: Array.isArray(settings.navigatorExcludeFolders)
       ? (settings.navigatorExcludeFolders as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((s) => s.trim())
       : [],
@@ -429,6 +446,29 @@ class BreadTrailSettingTab extends PluginSettingTab {
         t.onChange(async (v) => { this.plugin.settings.navigatorSortField = v.trim(); await this.save(); });
       });
 
+    new Setting(el)
+      .setName('Skip preview for Base notes')
+      .setDesc('When on, notes whose first 3 lines contain a transcluded Base (![[*.base]]) or an inline ```base block are shown without a preview excerpt. Avoids useless raw block previews.')
+      .addToggle((t) => {
+        t.setValue(this.plugin.settings.navigatorSkipPreviewForBases);
+        t.onChange(async (v) => { this.plugin.settings.navigatorSkipPreviewForBases = v; await this.save(); });
+      });
+
+    new Setting(el)
+      .setName('Preview lines')
+      .setDesc('Number of content lines shown in card previews.')
+      .addSlider((s) => {
+        s.setLimits(1, 20, 1);
+        s.setValue(this.plugin.settings.navigatorPreviewLines);
+        s.setDynamicTooltip();
+        s.onChange(async (v) => {
+          this.plugin.settings.navigatorPreviewLines = v;
+          // Clear snippet cache so the new line count takes effect immediately
+          this.plugin.getNavigatorView()?.clearSnippetCache();
+          await this.save();
+        });
+      });
+
     new Setting(el).setName('Toolbar buttons').setHeading();
 
     const toolbarDefs: { key: keyof BreadTrailSettings['navigatorToolbarVisible']; name: string; desc: string }[] = [
@@ -472,6 +512,32 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .addToggle((t) => {
         t.setValue(this.plugin.settings.floatingNavRight);
         t.onChange(async (v) => { this.plugin.settings.floatingNavRight = v; await this.save(); });
+      });
+
+    new Setting(el)
+      .setName('Header breadcrumbs')
+      .setDesc('Replace the file-path breadcrumb in note headers with clickable BC ancestor links.')
+      .addToggle((t) => {
+        t.setValue(this.plugin.settings.headerBreadcrumbs);
+        t.onChange(async (v) => {
+          this.plugin.settings.headerBreadcrumbs = v;
+          await this.save();
+          this.plugin.updateAllHeaderBreadcrumbs();
+        });
+      });
+
+    new Setting(el)
+      .setName('Breadcrumb depth')
+      .setDesc('How many ancestor levels to show. 0 = all.')
+      .addSlider((s) => {
+        s.setLimits(0, 8, 1);
+        s.setValue(this.plugin.settings.headerBreadcrumbsDepth);
+        s.setDynamicTooltip();
+        s.onChange(async (v) => {
+          this.plugin.settings.headerBreadcrumbsDepth = v;
+          await this.save();
+          this.plugin.updateAllHeaderBreadcrumbs();
+        });
       });
 
     new Setting(el).setName('Favorites view').setHeading();
