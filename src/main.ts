@@ -163,6 +163,8 @@ export default class BreadTrail extends Plugin {
   private floatingPanels = new Map<MarkdownView, { left?: FloatingNavPanel; right?: FloatingNavPanel }>();
   private summonedFloatingPanel: { view: MarkdownView; panel: FloatingNavPanel } | null = null;
   private breadcrumbsGraphEventRegistered = false;
+  /** Tracks the currently open ExplorerModal so we never spawn duplicates. */
+  private activeExplorerModal: ExplorerModal | null = null;
 
 
   async onload() {
@@ -175,14 +177,16 @@ export default class BreadTrail extends Plugin {
       (leaf) => new NavigatorView(leaf, this.settings, () => this.ensureBreadcrumbs(), () => this.saveSettings()),
     );
 
-    // Ribbon icon — opens the navigator sidebar on both desktop and mobile
+    // Ribbon icon — opens the navigator sidebar (left on mobile, right on desktop)
     this.addRibbonIcon('footprints', 'BreadTrail navigator', async () => {
       const existing = this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE);
       if (existing.length > 0 && existing[0]) {
         await this.app.workspace.revealLeaf(existing[0]);
         return;
       }
-      const leaf = this.app.workspace.getRightLeaf(false);
+      const leaf = Platform.isMobile
+        ? this.app.workspace.getLeftLeaf(false)
+        : this.app.workspace.getRightLeaf(false);
       if (leaf) {
         await leaf.setViewState({ type: NAVIGATOR_VIEW_TYPE, active: true });
         await this.app.workspace.revealLeaf(leaf);
@@ -327,7 +331,9 @@ export default class BreadTrail extends Plugin {
           await this.app.workspace.revealLeaf(existing[0]);
           return;
         }
-        const leaf = this.app.workspace.getRightLeaf(false);
+        const leaf = Platform.isMobile
+          ? this.app.workspace.getLeftLeaf(false)
+          : this.app.workspace.getRightLeaf(false);
         if (leaf) {
           await leaf.setViewState({ type: NAVIGATOR_VIEW_TYPE, active: true });
           await this.app.workspace.revealLeaf(leaf);
@@ -392,11 +398,7 @@ export default class BreadTrail extends Plugin {
     this.addCommand({
       id: 'open-explorer',
       name: 'Open tile explorer',
-      callback: () => {
-        const bc = this.ensureBreadcrumbs();
-        if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
-        new ExplorerModal(this.app, bc, this.settings.graphLabelProperty).open();
-      },
+      callback: () => this.openExplorerModal(),
     });
 
     this.addCommand({
@@ -420,6 +422,22 @@ export default class BreadTrail extends Plugin {
 
     if (Platform.isMobile) this.registerMobileTapZone();
 
+  }
+
+  /** Open the tile explorer modal. Guards against duplicate spawns — if one is
+   *  already open the call is a no-op. */
+  private openExplorerModal(): void {
+    if (this.activeExplorerModal) return;
+    const bc = this.ensureBreadcrumbs();
+    if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
+    const modal = new ExplorerModal(
+      this.app, bc,
+      this.settings.graphLabelProperty,
+      this.settings.explorerTileMinWidth,
+      () => { this.activeExplorerModal = null; },
+    );
+    this.activeExplorerModal = modal;
+    modal.open();
   }
 
   /** On mobile: swipe up on the leftmost edge of the screen opens the tile
@@ -450,8 +468,7 @@ export default class BreadTrail extends Plugin {
 
       // Swipe up: sufficient upward movement, not drifting too far sideways
       if (dy < -MIN_SWIPE_UP && Math.abs(dx) < MAX_HORIZ && this.settings.mobileTapExplorer) {
-        const bc = this.ensureBreadcrumbs();
-        if (bc) new ExplorerModal(this.app, bc, this.settings.graphLabelProperty).open();
+        this.openExplorerModal();
       }
     };
 

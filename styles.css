@@ -140,6 +140,15 @@
   font-weight: 500;
 }
 
+/* "hold to open" hint — shown on folder tiles so users discover long-press */
+.bt-explorer-tile-open-hint {
+  font-size: 9px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+  line-height: 1;
+}
+
 /* Empty state */
 .bt-explorer-empty {
   flex: 1;
@@ -1298,6 +1307,13 @@
 
 /* ── Navigator sidebar view ────────────────────────────────────── */
 
+/* Strip Obsidian's default view-content padding so our scroll area reaches
+   all the way to the leaf's bottom chrome (the breadcrumb bar on mobile). */
+.workspace-leaf[data-type="bread-trail-navigator"] .view-content {
+  padding: 0;
+  overflow: hidden;
+}
+
 .bread-trail-nav {
   display: flex;
   flex-direction: column;
@@ -2165,11 +2181,11 @@
   border-radius: 0;
 }
 
-/* 2-column grid on narrow screens */
+/* Grid gap/padding on mobile — column count controlled by the tile min-width
+   setting applied as an inline style on the element */
 .is-mobile .bt-explorer-grid {
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 14px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
 }
 
 /* Larger, easier-to-tap tiles */
@@ -2194,37 +2210,59 @@
   font-size: var(--font-ui-small);
 }
 
-/* Taller crumb and back buttons */
+/* Taller crumb buttons — back button now lives here too */
 .is-mobile .bt-explorer-crumbs {
   padding: 14px 16px 10px;
   gap: 4px;
 }
 
 .is-mobile .bt-explorer-crumb-btn {
-  min-height: 36px;
-  font-size: var(--font-ui-small);
-  padding: 4px 8px;
-}
-
-.is-mobile .bt-explorer-back-btn {
   min-height: 44px;
   font-size: var(--font-ui-small);
-  padding: 8px 12px;
+  padding: 4px 10px;
+}
+
+/* Back button (now in crumbs bar) — slightly more prominent */
+.is-mobile .bt-explorer-crumb-back {
+  padding: 4px 12px;
+  color: var(--text-normal);
 }
 
 /* Navigator sidebar ---------------------------------------- */
 
-/* Larger toolbar buttons */
+/* Toolbar moves to the bottom — idiomatic mobile nav pattern (thumb zone).
+   column-reverse flips the flex order so the toolbar (first in DOM) renders
+   last visually, content fills the top. */
+.is-mobile .bread-trail-nav {
+  flex-direction: column-reverse;
+}
+
+.is-mobile .bread-trail-nav-toolbar {
+  border-top: 1px solid var(--background-modifier-border);
+  border-bottom: none;
+  /* Respect the home-indicator safe area on notched/gesture phones */
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+/* Toolbar buttons: 30px keeps all icons on one line in a narrow sidebar.
+   36px was too wide — the auto-margin before action buttons pushed the
+   last icon onto a second row. */
 .is-mobile .bread-trail-nav-mode-btn,
 .is-mobile .bread-trail-nav-action-btn {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
 }
 
 .is-mobile .bread-trail-nav-mode-btn svg,
 .is-mobile .bread-trail-nav-action-btn svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
+}
+
+/* Replace margin-left: auto (which eats all leftover space) with a small
+   fixed gap so the action buttons stay close to the mode group */
+.is-mobile .bread-trail-nav-action-btn:first-of-type {
+  margin-left: 4px;
 }
 
 /* Taller cards for easier tapping */
@@ -2260,4 +2298,29 @@
 .is-mobile .bt-header-crumb-item {
   font-size: var(--font-ui-small);
   max-width: 120px;
+}
+
+/* File-system browser (traditional list view) — larger rows and text */
+.is-mobile .bread-trail-nav-folder-row,
+.is-mobile .bread-trail-nav-file-row {
+  min-height: 44px;
+  padding: 8px 12px;
+  gap: 10px;
+}
+
+.is-mobile .bread-trail-nav-folder-name,
+.is-mobile .bread-trail-nav-file-name {
+  font-size: var(--font-ui-medium);
+}
+
+.is-mobile .bread-trail-nav-folder-icon,
+.is-mobile .bread-trail-nav-file-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.is-mobile .bread-trail-nav-folder-icon svg,
+.is-mobile .bread-trail-nav-file-icon svg {
+  width: 18px;
+  height: 18px;
 }

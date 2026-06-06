@@ -97,6 +97,8 @@ export interface BreadTrailSettings {
   navigatorSkipPreviewForBases: boolean;
   /** Number of content lines shown in the card preview (default 3). */
   navigatorPreviewLines: number;
+  /** Minimum tile width (px) in the tile explorer grid. Smaller = more columns. */
+  explorerTileMinWidth: number;
   /** Folder paths whose contents are hidden from the navigator (prefix match). */
   navigatorExcludeFolders: string[];
   /** Exact file paths to hide from the navigator. */
@@ -168,6 +170,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   navigatorFavoritesMetaProperties: [],
   navigatorSkipPreviewForBases: true,
   navigatorPreviewLines: 3,
+  explorerTileMinWidth: 90,
   navigatorExcludeFolders: [],
   navigatorExcludeFiles: [],
   navigatorExcludeFrontmatter: [],
@@ -275,6 +278,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
       : [],
     navigatorSkipPreviewForBases: typeof settings.navigatorSkipPreviewForBases === 'boolean' ? settings.navigatorSkipPreviewForBases : true,
     navigatorPreviewLines: typeof settings.navigatorPreviewLines === 'number' && settings.navigatorPreviewLines > 0 ? Math.floor(settings.navigatorPreviewLines) : 3,
+    explorerTileMinWidth: typeof settings.explorerTileMinWidth === 'number' && settings.explorerTileMinWidth >= 60 ? Math.floor(settings.explorerTileMinWidth) : 90,
     navigatorExcludeFolders: Array.isArray(settings.navigatorExcludeFolders)
       ? (settings.navigatorExcludeFolders as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((s) => s.trim())
       : [],
@@ -471,6 +475,18 @@ class BreadTrailSettingTab extends PluginSettingTab {
           this.plugin.getNavigatorView()?.clearSnippetCache();
           await this.save();
         });
+      });
+
+    new Setting(el).setName('Tile explorer').setHeading();
+
+    new Setting(el)
+      .setName('Tile minimum width')
+      .setDesc('Minimum width of each tile in the explorer grid (px). Smaller values fit more tiles per row.')
+      .addSlider((s) => {
+        s.setLimits(60, 160, 10);
+        s.setValue(this.plugin.settings.explorerTileMinWidth);
+        s.setDynamicTooltip();
+        s.onChange(async (v) => { this.plugin.settings.explorerTileMinWidth = v; await this.save(); });
       });
 
     new Setting(el).setName('Toolbar buttons').setHeading();
