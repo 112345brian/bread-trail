@@ -1341,7 +1341,7 @@
   color: inherit;
 }
 
-/* Toolbar */
+/* Toolbar — single row on all platforms */
 .bread-trail-nav-toolbar {
   display: flex;
   align-items: center;
@@ -1349,6 +1349,7 @@
   padding: 6px 10px;
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
+  flex-wrap: nowrap;
 }
 
 .bread-trail-nav-mode-group {
@@ -1404,10 +1405,8 @@
   flex-shrink: 0;
 }
 
-/* Push action buttons to the far right */
-.bread-trail-nav-action-btn:first-of-type {
-  margin-left: auto;
-}
+/* Action buttons pushed right when browser nav is active (it fills flex:1).
+   When inactive, the sibling selector on .is-inactive handles the margin. */
 
 .bread-trail-nav-action-btn:hover {
   background: var(--background-modifier-hover);
@@ -1424,23 +1423,26 @@
   height: 14px;
 }
 
-/* Browser nav row: back button + folder title + sort — full width below the mode buttons */
-.bread-trail-nav-toolbar {
-  flex-wrap: wrap;
-}
-
+/* Browser nav sits inline between the mode group and action buttons (flex:1).
+   Single-row toolbar on all platforms — no wrapping needed. */
 .bread-trail-nav-browser-nav {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  flex: 1;
   min-width: 0;
-  padding-top: 4px;
 }
 
-/* Desktop: remove from flow entirely when inactive */
+/* Hidden when not in browser mode */
 .bread-trail-nav-browser-nav.is-inactive {
   display: none;
+}
+
+/* When browser nav is inactive, the first action button needs auto-margin to
+   push the action cluster to the right edge. */
+.bread-trail-nav-browser-nav.is-inactive ~ .bread-trail-nav-action-btn:first-of-type,
+.bread-trail-nav-browser-nav.is-inactive ~ button.bread-trail-nav-action-btn:first-of-type {
+  margin-left: auto;
 }
 
 /* Mobile: browser nav does not appear in the toolbar (it's a sticky header
