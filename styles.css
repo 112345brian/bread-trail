@@ -2241,27 +2241,29 @@
   color: var(--text-normal);
 }
 
-/* Navigator sidebar ---------------------------------------- */
+/* ── Navigator sidebar — mobile overrides ─────────────────── */
 
-/* On mobile the toolbar lives at the TOP of the view (no bottom chrome issues).
-   The browser nav (back + title + sort) is a sticky header inside the content
-   area when in browser mode, so the toolbar stays a single compact row.
-   This mirrors Notebook Navigator's Android layout: compact top bar + content header. */
+/* Toolbar sits at the TOP of the view on mobile.
+   No bottom-chrome gap is possible when the toolbar isn't at the bottom.
+   Inspired by Notebook Navigator's Android layout:
+     compact single-row top bar  +  context header inside content area.      */
 
 .is-mobile .bread-trail-nav {
   flex-direction: column;
 }
 
+/* Single-row toolbar at top — no wrapping, no absolute positioning */
 .is-mobile .bread-trail-nav-toolbar {
+  flex-wrap: nowrap;
   border-bottom: 1px solid var(--background-modifier-border);
   border-top: none;
-  padding: 0 6px 0 0;
-  flex-wrap: nowrap; /* Single row — browser nav moved to content header */
+  padding: 0 4px 0 0;
 }
 
-/* Mode group: flex:1 so it fills remaining space beside the action buttons */
+/* Mode group: flex:1 fills the width beside the action buttons */
 .is-mobile .bread-trail-nav-mode-group {
   flex: 1;
+  width: auto;       /* override desktop width:auto (no full-width needed) */
   justify-content: space-around;
   background: transparent;
   border-radius: 0;
@@ -2269,11 +2271,12 @@
   gap: 0;
 }
 
+/* Mode buttons: full-height tab targets */
 .is-mobile .bread-trail-nav-mode-btn {
   flex: 1;
   min-width: 0;
-  height: 44px;
   width: auto;
+  height: 44px;
   border-radius: 0;
   flex-direction: column;
   gap: 2px;
@@ -2292,7 +2295,7 @@
   border-bottom: 2px solid var(--color-accent);
 }
 
-/* Action buttons: slightly larger tap targets, no auto-margin (mode group handles spacing) */
+/* Action buttons: 44px tall to match mode buttons, fixed width */
 .is-mobile .bread-trail-nav-action-btn {
   width: 40px;
   height: 44px;
@@ -2308,8 +2311,13 @@
   margin-left: 0;
 }
 
+/* Browser nav does not appear in the toolbar on mobile */
+.is-mobile .bread-trail-nav-browser-nav {
+  display: none;
+}
+
 /* Browser header — sticky bar at top of content area, shown in browser mode.
-   Contains back button, current folder title, and sort cycle button. */
+   Contains back button, current folder title, and optional sort toggle. */
 .bread-trail-nav-browser-header {
   display: flex;
   align-items: center;
@@ -2338,60 +2346,9 @@
   flex-shrink: 0;
 }
 
-/* No extra bottom padding needed — toolbar is at the top */
+/* No bottom padding needed — toolbar is at the top */
 .is-mobile .bread-trail-nav-content {
   padding-bottom: 0;
-}
-
-/* Mode group spans the full toolbar width — each button gets an equal share,
-   like a proper tab bar. flex: 1 + min-width: 0 lets them shrink if needed. */
-.is-mobile .bread-trail-nav-mode-group {
-  width: 100%;
-  justify-content: space-around;
-  background: transparent;
-  border-radius: 0;
-  padding: 0;
-  gap: 0;
-}
-
-.is-mobile .bread-trail-nav-mode-btn {
-  flex: 1;
-  min-width: 0;
-  height: 44px;
-  width: auto;
-  border-radius: 0;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.is-mobile .bread-trail-nav-mode-btn svg {
-  width: 22px;
-  height: 22px;
-}
-
-/* Active tab: accent underline instead of pill background */
-.is-mobile .bread-trail-nav-mode-btn.is-active {
-  background: transparent;
-  box-shadow: none;
-  color: var(--color-accent);
-  border-bottom: 2px solid var(--color-accent);
-}
-
-/* Secondary action buttons sit on their own line, right-aligned */
-.is-mobile .bread-trail-nav-action-btn {
-  width: 36px;
-  height: 36px;
-}
-
-.is-mobile .bread-trail-nav-action-btn svg {
-  width: 18px;
-  height: 18px;
-}
-
-/* No margin-left:auto needed — the browser nav's flex:1 naturally pushes
-   action buttons to the right of the second row */
-.is-mobile .bread-trail-nav-action-btn:first-of-type {
-  margin-left: 0;
 }
 
 /* Taller cards for easier tapping */
@@ -2404,20 +2361,11 @@
   font-size: var(--font-ui-medium);
 }
 
-/* Bigger drill-in button */
-.is-mobile .bread-trail-nav-card-drill {
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-}
-
 /* Larger section headers */
 .is-mobile .bread-trail-nav-section-header {
   min-height: 40px;
   padding: 0 12px;
 }
-
-/* Back button: sized in .bread-trail-nav-browser-header rule above */
 
 /* Header breadcrumbs — slightly larger text on mobile */
 .is-mobile .bt-header-crumb-item {
