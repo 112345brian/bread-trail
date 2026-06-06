@@ -1,5 +1,5 @@
 import { render, h } from 'preact';
-import { ItemView, Menu, Platform, TFile, TFolder, WorkspaceLeaf } from 'obsidian';
+import { ItemView, Menu, TFile, TFolder, WorkspaceLeaf } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 import type {
@@ -8,7 +8,6 @@ import type {
   SortMode, ToolbarData,
 } from './navigator/types';
 import { NavigatorApp } from './navigator/App';
-import { Toolbar } from './navigator/Toolbar';
 import { extractContentSnippet, extractFirstImageLink, formatDateValue, startsWithBaseTransclusion } from './utils';
 
 export const NAVIGATOR_VIEW_TYPE = 'bread-trail-navigator';
@@ -60,11 +59,6 @@ export class NavigatorView extends ItemView {
   // Track the last context-mode file so we can reset child sort when it changes
   private lastContextFilePath: string | null = null;
 
-  // On mobile: toolbar is rendered into a div injected directly into
-  // .workspace-drawer-inner (position:relative), mirroring how Obsidian's
-  // .nav-buttons-container is placed so it sits flush at the bottom with no gap.
-  private externalToolbarEl: HTMLElement | null = null;
-
   // Follow mode: auto-navigate to the active file's BC parent when it changes
   private followMode = false;
   // When follow mode navigates, these are all the UP parents of the active file
@@ -108,11 +102,6 @@ export class NavigatorView extends ItemView {
 
   async onClose() {
     render(null, this.contentEl);
-    if (this.externalToolbarEl) {
-      render(null, this.externalToolbarEl);
-      this.externalToolbarEl.remove();
-      this.externalToolbarEl = null;
-    }
   }
 
   updateSettings(s: BreadTrailSettings) {
@@ -135,24 +124,8 @@ export class NavigatorView extends ItemView {
   async refresh() {
     const data = await this.computeNavData();
     const actions = this.buildActions();
-
-    // On mobile, inject the toolbar into .workspace-drawer-inner so it sits
-    // at position:absolute; bottom:0 — exactly like Obsidian's own
-    // .nav-buttons-container in the file explorer, giving zero gap.
-    const isMobile = Platform.isMobile;
-    if (isMobile) {
-      const drawerInner = this.containerEl.closest<HTMLElement>('.workspace-drawer-inner');
-      if (drawerInner) {
-        if (!this.externalToolbarEl || !drawerInner.contains(this.externalToolbarEl)) {
-          this.externalToolbarEl?.remove();
-          this.externalToolbarEl = drawerInner.createDiv('bread-trail-nav-external-toolbar');
-        }
-        render(h(Toolbar, { data: data.toolbar, actions }), this.externalToolbarEl);
-      }
-    }
-
     render(
-      h(NavigatorApp, { data, actions, app: this.app, component: this, hideToolbar: isMobile }),
+      h(NavigatorApp, { data, actions, app: this.app, component: this }),
       this.contentEl,
     );
     // After Preact flushes, scroll the active card into view

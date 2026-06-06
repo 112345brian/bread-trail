@@ -1,6 +1,7 @@
-import { App, Component, setIcon } from 'obsidian';
-import type { NavData, NavActions, GroupData, BrowserItem } from './types';
+import { App, Component, Platform, setIcon } from 'obsidian';
+import type { NavData, NavActions, GroupData, BrowserItem, ToolbarData } from './types';
 import { Toolbar } from './Toolbar';
+import { OIcon } from './OIcon';
 import { Section } from './Section';
 import { Card } from './Card';
 
@@ -9,8 +10,40 @@ interface AppProps {
   actions: NavActions;
   app: App;
   component: Component;
-  /** On mobile the toolbar is rendered externally; skip it inside the app. */
-  hideToolbar?: boolean;
+}
+
+const SORT_ICON: Record<string, string> = {
+  sequence: 'list-ordered', alpha: 'arrow-up-a-z', 'alpha-desc': 'arrow-down-z-a',
+  field: 'arrow-up-narrow-wide', mtime: 'clock', ctime: 'calendar',
+};
+const SORT_LABEL: Record<string, string> = {
+  sequence: 'Sequence order', alpha: 'A → Z', 'alpha-desc': 'Z → A',
+  field: 'By field', mtime: 'Date modified', ctime: 'Date created',
+};
+
+/** Browser navigation header — back button, current folder title, sort toggle.
+ *  Rendered inside the content area on mobile so the toolbar stays a single
+ *  compact row. On desktop this is shown in the toolbar itself. */
+function BrowserHeader({ data, actions }: { data: ToolbarData; actions: NavActions }) {
+  const { browserTitle, browserIsRoots, browserCanGoBack, browserSortMode, browserSortCycle, browserViewMode } = data;
+  return (
+    <div class="bread-trail-nav-browser-header">
+      <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
+        aria-label="Go up" onClick={actions.browserBack}>
+        <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
+      </button>
+      <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
+        {browserTitle}
+      </span>
+      {browserViewMode === 'bc' && browserSortCycle.length > 1 && (
+        <button class="bread-trail-nav-sort-btn"
+          aria-label={SORT_LABEL[browserSortMode] ?? browserSortMode}
+          onClick={actions.browserCycleSort}>
+          <OIcon name={SORT_ICON[browserSortMode] ?? 'list-ordered'} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 function FolderRow({ name, onClick }: { name: string; onClick: () => void }) {
@@ -49,8 +82,9 @@ function BrowserItemEl({ item, actions, app, component }: {
   return <Card data={item.data} actions={actions} app={app} component={component} />;
 }
 
-export function NavigatorApp({ data, actions, app, component, hideToolbar }: AppProps) {
+export function NavigatorApp({ data, actions, app, component }: AppProps) {
   const { toolbar, sections, flatCards, groups, browserItems, emptyMessage } = data;
+  const isMobile = Platform.isMobile;
 
   const renderContent = () => {
     if (emptyMessage) {
@@ -87,8 +121,13 @@ export function NavigatorApp({ data, actions, app, component, hideToolbar }: App
 
   return (
     <div class="bread-trail-nav">
-      {!hideToolbar && <Toolbar data={toolbar} actions={actions} />}
+      <Toolbar data={toolbar} actions={actions} isMobile={isMobile} />
       <div class="bread-trail-nav-content">
+        {/* On mobile, browser nav (back + title + sort) lives here as a sticky
+            header instead of in the toolbar — keeps the toolbar a single row. */}
+        {isMobile && toolbar.mode === 'browser' && (
+          <BrowserHeader data={toolbar} actions={actions} />
+        )}
         {renderContent()}
       </div>
     </div>

@@ -32,9 +32,9 @@ function ActionBtn({ icon, label, onClick }: {
   );
 }
 
-interface ToolbarProps { data: ToolbarData; actions: NavActions; }
+interface ToolbarProps { data: ToolbarData; actions: NavActions; isMobile?: boolean; }
 
-export function Toolbar({ data, actions }: ToolbarProps) {
+export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
   const { mode, vis, previewExpanded, atActive, recentViewMode,
           browserViewMode, browserTitle, browserIsRoots, browserCanGoBack,
           browserSortMode, browserSortCycle, followMode } = data;
@@ -69,26 +69,26 @@ export function Toolbar({ data, actions }: ToolbarProps) {
         )}
       </div>
 
-      {/* Browser nav: always rendered so mobile toolbar height stays constant.
-          On desktop: display:none when inactive. On mobile: sits inline with the
-          action buttons (flex:1 fills leftover space), visibility:hidden when
-          inactive so action buttons never shift position. */}
-      <div class={`bread-trail-nav-browser-nav${isBrowser ? '' : ' is-inactive'}`}>
-        <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
-          onClick={actions.browserBack}>
-          <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
-        </button>
-        <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
-          {browserTitle}
-        </span>
-        {browserViewMode === 'bc' && browserSortCycle.length > 1 && (
-          <button class="bread-trail-nav-sort-btn bread-trail-nav-browser-sort"
-            aria-label={SORT_LABEL[browserSortMode] ?? browserSortMode}
-            onClick={actions.browserCycleSort}>
-            <OIcon name={SORT_ICON[browserSortMode] ?? 'list-ordered'} />
+      {/* Desktop only: browser nav (back + title + sort) sits in-line with action buttons.
+          On mobile, this is rendered as a sticky header inside the content area instead. */}
+      {!isMobile && (
+        <div class={`bread-trail-nav-browser-nav${isBrowser ? '' : ' is-inactive'}`}>
+          <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
+            onClick={actions.browserBack}>
+            <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
           </button>
-        )}
-      </div>
+          <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
+            {browserTitle}
+          </span>
+          {browserViewMode === 'bc' && browserSortCycle.length > 1 && (
+            <button class="bread-trail-nav-sort-btn bread-trail-nav-browser-sort"
+              aria-label={SORT_LABEL[browserSortMode] ?? browserSortMode}
+              onClick={actions.browserCycleSort}>
+              <OIcon name={SORT_ICON[browserSortMode] ?? 'list-ordered'} />
+            </button>
+          )}
+        </div>
+      )}
 
       {(vis.goToActive || vis.reset) && (
         <ActionBtn
@@ -97,7 +97,8 @@ export function Toolbar({ data, actions }: ToolbarProps) {
           onClick={actions.goToActive}
         />
       )}
-      {vis.preview && (
+      {/* Preview toggle: desktop always, mobile only when not in browser mode to save space */}
+      {vis.preview && (!isMobile || !isBrowser) && (
         <ActionBtn
           icon={previewExpanded ? 'eye' : 'eye-off'}
           label={previewExpanded ? 'Hide previews' : 'Show previews'}

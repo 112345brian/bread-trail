@@ -1443,19 +1443,10 @@
   display: none;
 }
 
-/* Mobile: browser nav sits inline with the action buttons (same row).
-   flex:1 fills the space to the left of the action buttons.
-   visibility:hidden when inactive keeps action buttons in place. */
+/* Mobile: browser nav does not appear in the toolbar (it's a sticky header
+   inside the content area). Hide any stale rules. */
 .is-mobile .bread-trail-nav-browser-nav {
-  width: auto;
-  flex: 1;
-  padding-top: 0;
-}
-
-.is-mobile .bread-trail-nav-browser-nav.is-inactive {
-  display: flex;
-  visibility: hidden;
-  pointer-events: none;
+  display: none;
 }
 
 .bread-trail-nav-back-btn {
@@ -2252,53 +2243,104 @@
 
 /* Navigator sidebar ---------------------------------------- */
 
-/* On mobile the toolbar is injected into .workspace-drawer-inner (position:relative)
-   as .bread-trail-nav-external-toolbar, mirroring Obsidian's own .nav-buttons-container
-   approach for the file explorer — sits flush at bottom: 0 with zero gap. */
-.bread-trail-nav-external-toolbar {
-  /* Positioning handled by the .is-mobile rule below */
-}
-
-/* Reset Obsidian's global button defaults inside the external toolbar host,
-   same as the .bread-trail-nav button reset above. */
-.bread-trail-nav-external-toolbar button {
-  height: auto;
-  min-height: 0;
-  padding: 0;
-  background: transparent;
-  background-color: transparent;
-  border: none;
-  box-shadow: none;
-  font-size: inherit;
-  line-height: inherit;
-  white-space: normal;
-  cursor: pointer;
-  color: inherit;
-}
-
-.is-mobile .bread-trail-nav-external-toolbar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  background: var(--background-primary);
-}
+/* On mobile the toolbar lives at the TOP of the view (no bottom chrome issues).
+   The browser nav (back + title + sort) is a sticky header inside the content
+   area when in browser mode, so the toolbar stays a single compact row.
+   This mirrors Notebook Navigator's Android layout: compact top bar + content header. */
 
 .is-mobile .bread-trail-nav {
   flex-direction: column;
 }
 
 .is-mobile .bread-trail-nav-toolbar {
-  border-top: 1px solid var(--background-modifier-border);
-  border-bottom: none;
-  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  border-top: none;
+  padding: 0 6px 0 0;
+  flex-wrap: nowrap; /* Single row — browser nav moved to content header */
 }
 
-/* Push content up so it doesn't scroll behind the external toolbar.
-   ~92px covers the two toolbar rows (44px modes + 36px actions + padding). */
+/* Mode group: flex:1 so it fills remaining space beside the action buttons */
+.is-mobile .bread-trail-nav-mode-group {
+  flex: 1;
+  justify-content: space-around;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  gap: 0;
+}
+
+.is-mobile .bread-trail-nav-mode-btn {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  width: auto;
+  border-radius: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.is-mobile .bread-trail-nav-mode-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Active tab: accent underline */
+.is-mobile .bread-trail-nav-mode-btn.is-active {
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-accent);
+  border-bottom: 2px solid var(--color-accent);
+}
+
+/* Action buttons: slightly larger tap targets, no auto-margin (mode group handles spacing) */
+.is-mobile .bread-trail-nav-action-btn {
+  width: 40px;
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.is-mobile .bread-trail-nav-action-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.is-mobile .bread-trail-nav-action-btn:first-of-type {
+  margin-left: 0;
+}
+
+/* Browser header — sticky bar at top of content area, shown in browser mode.
+   Contains back button, current folder title, and sort cycle button. */
+.bread-trail-nav-browser-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.bread-trail-nav-browser-header .bread-trail-nav-back-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.bread-trail-nav-browser-header .bread-trail-nav-browser-title {
+  flex: 1;
+}
+
+.bread-trail-nav-browser-header .bread-trail-nav-sort-btn {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+/* No extra bottom padding needed — toolbar is at the top */
 .is-mobile .bread-trail-nav-content {
-  padding-bottom: 92px;
+  padding-bottom: 0;
 }
 
 /* Mode group spans the full toolbar width — each button gets an equal share,
@@ -2375,11 +2417,7 @@
   padding: 0 12px;
 }
 
-/* Back button in browser nav */
-.is-mobile .bread-trail-nav-back-btn {
-  width: 36px;
-  height: 36px;
-}
+/* Back button: sized in .bread-trail-nav-browser-header rule above */
 
 /* Header breadcrumbs — slightly larger text on mobile */
 .is-mobile .bt-header-crumb-item {
