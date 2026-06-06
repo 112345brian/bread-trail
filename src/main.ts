@@ -1,4 +1,4 @@
-import { App, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Modal, Notice, Plugin, TFile, setIcon } from 'obsidian';
+import { App, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Modal, Notice, Platform, Plugin, TFile, setIcon } from 'obsidian';
 import { OutlineModal } from './OutlineModal';
 import { ExplorerModal } from './ExplorerModal';
 import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
@@ -174,6 +174,20 @@ export default class BreadTrail extends Plugin {
       NAVIGATOR_VIEW_TYPE,
       (leaf) => new NavigatorView(leaf, this.settings, () => this.ensureBreadcrumbs(), () => this.saveSettings()),
     );
+
+    // Ribbon icon — opens the navigator sidebar on both desktop and mobile
+    this.addRibbonIcon('footprints', 'BreadTrail navigator', async () => {
+      const existing = this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE);
+      if (existing.length > 0 && existing[0]) {
+        await this.app.workspace.revealLeaf(existing[0]);
+        return;
+      }
+      const leaf = this.app.workspace.getRightLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({ type: NAVIGATOR_VIEW_TYPE, active: true });
+        await this.app.workspace.revealLeaf(leaf);
+      }
+    });
 
     // Check for Breadcrumbs on startup. Breadcrumbs can finish loading after
     // Bread Trail, so this path retries before showing the missing-plugin modal.
@@ -402,6 +416,52 @@ export default class BreadTrail extends Plugin {
         new GraphSwitcher(this.app, file, bc, this.settings, () => this.saveSettings()).open();
         return true;
       },
+    });
+
+    if (Platform.isMobile) this.registerMobileTapZone();
+
+  }
+
+  /** On mobile: swipe up on the leftmost edge of the screen opens the tile
+   *  explorer modal. A vertical swipe-up is orthogonal to Obsidian's horizontal
+   *  swipe-right (sidebar), so the two gestures never conflict. Uses capture
+   *  phase so we see events before Obsidian's inner handlers. */
+  private registerMobileTapZone() {
+    const EDGE_WIDTH   = 44;   // px from left edge (standard touch target)
+    const MIN_SWIPE_UP = 40;   // minimum upward movement to trigger (px)
+    const MAX_HORIZ    = 30;   // max horizontal drift before we ignore it (px)
+
+    let startX = -1, startY = 0;
+
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t || t.clientX > EDGE_WIDTH) { startX = -1; return; }
+      startX = t.clientX;
+      startY = t.clientY;
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (startX < 0) return;
+      const t = e.changedTouches[0];
+      if (!t) { startX = -1; return; }
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      startX = -1;
+
+      // Swipe up: sufficient upward movement, not drifting too far sideways
+      if (dy < -MIN_SWIPE_UP && Math.abs(dx) < MAX_HORIZ && this.settings.mobileTapExplorer) {
+        const bc = this.ensureBreadcrumbs();
+        if (bc) new ExplorerModal(this.app, bc, this.settings.graphLabelProperty).open();
+      }
+    };
+
+    // capture:true — see events before Obsidian's inner handlers
+    const opts = { passive: true, capture: true } as const;
+    document.addEventListener('touchstart', onTouchStart, opts);
+    document.addEventListener('touchend',   onTouchEnd,   opts);
+    this.register(() => {
+      document.removeEventListener('touchstart', onTouchStart, { capture: true });
+      document.removeEventListener('touchend',   onTouchEnd,   { capture: true });
     });
   }
 

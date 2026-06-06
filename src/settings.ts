@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, Platform, PluginSettingTab, Setting } from 'obsidian';
 import type BreadTrail from './main';
 
 export type ValidationSeverity = 'error' | 'warning' | 'off';
@@ -82,6 +82,8 @@ export interface BreadTrailSettings {
   floatingNavLeft: boolean;
   /** Show a floating navigator panel on the right edge of each note. */
   floatingNavRight: boolean;
+  /** On mobile: swipe up on the left edge of the screen to open the tile explorer. */
+  mobileTapExplorer: boolean;
   /** Replace the file-path breadcrumb in note headers with BC ancestor links. */
   headerBreadcrumbs: boolean;
   /** How many ancestor levels to show (0 = all). */
@@ -159,6 +161,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   navigatorSortField: '',
   floatingNavLeft: false,
   floatingNavRight: false,
+  mobileTapExplorer: true,
   headerBreadcrumbs: false,
   headerBreadcrumbsDepth: 0,
   navigatorFavorites: [],
@@ -261,6 +264,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     navigatorSortField: typeof settings.navigatorSortField === 'string' ? settings.navigatorSortField.trim() : '',
     floatingNavLeft: typeof settings.floatingNavLeft === 'boolean' ? settings.floatingNavLeft : false,
     floatingNavRight: typeof settings.floatingNavRight === 'boolean' ? settings.floatingNavRight : false,
+    mobileTapExplorer: typeof settings.mobileTapExplorer === 'boolean' ? settings.mobileTapExplorer : true,
     headerBreadcrumbs: typeof settings.headerBreadcrumbs === 'boolean' ? settings.headerBreadcrumbs : false,
     headerBreadcrumbsDepth: typeof settings.headerBreadcrumbsDepth === 'number' ? settings.headerBreadcrumbsDepth : 0,
     navigatorFavorites: Array.isArray(settings.navigatorFavorites)
@@ -493,26 +497,36 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el).setName('Floating navigator').setHeading();
 
-    el.createEl('p', {
-      text: 'A thin strip on the edge of each note that expands on hover, showing the same breadcrumb context as the sidebar. Clicking the pin button opens the sidebar on that side; closing the sidebar brings the float back.',
-      cls: 'setting-item-description',
-    });
-
-    new Setting(el)
-      .setName('Left edge panel')
-      .setDesc('Show a floating navigator on the left edge of every note.')
-      .addToggle((t) => {
-        t.setValue(this.plugin.settings.floatingNavLeft);
-        t.onChange(async (v) => { this.plugin.settings.floatingNavLeft = v; await this.save(); });
+    if (Platform.isMobile) {
+      new Setting(el)
+        .setName('Swipe up on left edge to open explorer')
+        .setDesc('Swipe upward on the leftmost edge of the screen to open the tile explorer. Swiping right still opens the sidebar as usual.')
+        .addToggle((t) => {
+          t.setValue(this.plugin.settings.mobileTapExplorer);
+          t.onChange(async (v) => { this.plugin.settings.mobileTapExplorer = v; await this.save(); });
+        });
+    } else {
+      el.createEl('p', {
+        text: 'A thin strip on the edge of each note that expands on hover, showing the same breadcrumb context as the sidebar. Clicking the pin button opens the sidebar on that side; closing the sidebar brings the float back.',
+        cls: 'setting-item-description',
       });
 
-    new Setting(el)
-      .setName('Right edge panel')
-      .setDesc('Show a floating navigator on the right edge of every note.')
-      .addToggle((t) => {
-        t.setValue(this.plugin.settings.floatingNavRight);
-        t.onChange(async (v) => { this.plugin.settings.floatingNavRight = v; await this.save(); });
-      });
+      new Setting(el)
+        .setName('Left edge panel')
+        .setDesc('Show a floating navigator on the left edge of every note.')
+        .addToggle((t) => {
+          t.setValue(this.plugin.settings.floatingNavLeft);
+          t.onChange(async (v) => { this.plugin.settings.floatingNavLeft = v; await this.save(); });
+        });
+
+      new Setting(el)
+        .setName('Right edge panel')
+        .setDesc('Show a floating navigator on the right edge of every note.')
+        .addToggle((t) => {
+          t.setValue(this.plugin.settings.floatingNavRight);
+          t.onChange(async (v) => { this.plugin.settings.floatingNavRight = v; await this.save(); });
+        });
+    }
 
     new Setting(el)
       .setName('Header breadcrumbs')
