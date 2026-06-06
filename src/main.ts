@@ -36,8 +36,9 @@ export interface BreadcrumbsPlugin {
 
 interface AppWithPlugins extends App {
   plugins?: {
+    getPlugin?(id: string): unknown;
     plugins?: {
-      breadcrumbs?: BreadcrumbsPlugin;
+      [id: string]: unknown;
     };
   };
 }
@@ -49,8 +50,18 @@ interface AppWithSettings extends App {
 }
 
 function getBreadcrumbs(app: App): BreadcrumbsPlugin | null {
-  const bc = (app as AppWithPlugins).plugins?.plugins?.breadcrumbs;
-  return bc?.graph ? bc : null;
+  const plugins = (app as AppWithPlugins).plugins;
+  const plugin = plugins?.getPlugin?.('breadcrumbs') ?? plugins?.plugins?.['breadcrumbs'];
+  return isBreadcrumbsPlugin(plugin) ? plugin : null;
+}
+
+function isBreadcrumbsPlugin(plugin: unknown): plugin is BreadcrumbsPlugin {
+  if (!plugin || typeof plugin !== 'object') return false;
+  const candidate = plugin as Partial<BreadcrumbsPlugin>;
+  const graph = candidate.graph;
+  return !!graph
+    && typeof graph.get_outgoing_edges === 'function'
+    && typeof graph.get_incoming_edges === 'function';
 }
 
 class BreadcrumbsMissingModal extends Modal {
@@ -150,6 +161,7 @@ export default class BreadTrail extends Plugin {
   // Floating navigator panels — keyed by view, one entry per side
   private floatingPanels = new Map<MarkdownView, { left?: FloatingNavPanel; right?: FloatingNavPanel }>();
   private summonedFloatingPanel: { view: MarkdownView; panel: FloatingNavPanel } | null = null;
+  private breadcrumbsGraphEventRegistered = false;
 
   async onload() {
     this.settings = normalizeSettings((await this.loadData()) as Partial<BreadTrailSettings> | null ?? {});
@@ -158,40 +170,13 @@ export default class BreadTrail extends Plugin {
     // Register the sidebar navigator view
     this.registerView(
       NAVIGATOR_VIEW_TYPE,
-      (leaf) => new NavigatorView(leaf, this.settings, () => this.bc, () => this.saveSettings()),
+      (leaf) => new NavigatorView(leaf, this.settings, () => this.ensureBreadcrumbs(), () => this.saveSettings()),
     );
 
-    // Check for Breadcrumbs on startup
+    // Check for Breadcrumbs on startup. Breadcrumbs can finish loading after
+    // Bread Trail, so this path retries before showing the missing-plugin modal.
     this.app.workspace.onLayoutReady(() => {
-      this.bc = getBreadcrumbs(this.app);
-      if (!this.bc) {
-        if (this.settings.showStartupNotice) {
-          new Notice('Bread trail: Breadcrumbs plugin not found.');
-        }
-        new BreadcrumbsMissingModal(this.app).open();
-        return;
-      }
-      if (this.settings.showStartupNotice) {
-        new Notice('Bread trail loaded — breadcrumbs detected.');
-      }
-
-      // Refresh the navigator now that bc is available (it rendered before bc
-      // was set, so it showed "not detected").
-      this.getNavigatorView()?.scheduleRefresh();
-
-      // BC may still be building its graph asynchronously — listen for the
-      // graph-built event and refresh again when it fires.
-      try {
-        this.bc.events.on('graph-built', () => {
-          this.getNavigatorView()?.scheduleRefresh();
-          this.refreshFloatingNavPanels();
-        });
-      } catch {
-        // BC event API not available in this version — ignore
-      }
-
-      // Initial floating panel sync now that bc is set
-      this.syncFloatingNavPanels();
+      this.checkBreadcrumbsOnStartup();
     });
 
     this.addCommand({
@@ -202,12 +187,13 @@ export default class BreadTrail extends Plugin {
         if (checking) return !!file && file.extension === 'md';
         if (!file) return false;
 
-        if (!this.bc) {
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) {
           new BreadcrumbsMissingModal(this.app).open();
           return true;
         }
 
-        new TrailModal(this.app, file, this.bc).open();
+        new TrailModal(this.app, file, bc).open();
         return true;
       },
     });
@@ -220,12 +206,13 @@ export default class BreadTrail extends Plugin {
         if (checking) return !!file && file.extension === 'md';
         if (!file) return false;
 
-        if (!this.bc) {
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) {
           new BreadcrumbsMissingModal(this.app).open();
           return true;
         }
 
-        new OutlineModal(this.app, file, this.bc).open();
+        new OutlineModal(this.app, file, bc).open();
         return true;
       },
     });
@@ -238,12 +225,13 @@ export default class BreadTrail extends Plugin {
         if (checking) return !!file && file.extension === 'md';
         if (!file) return false;
 
-        if (!this.bc) {
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) {
           new BreadcrumbsMissingModal(this.app).open();
           return true;
         }
 
-        new BreadcrumbQuickSwitcher(this.app, file, this.bc, this.settings).open();
+        new BreadcrumbQuickSwitcher(this.app, file, bc, this.settings).open();
         return true;
       },
     });
@@ -256,12 +244,13 @@ export default class BreadTrail extends Plugin {
         if (checking) return !!file && file.extension === 'md';
         if (!file) return false;
 
-        if (!this.bc) {
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) {
           new BreadcrumbsMissingModal(this.app).open();
           return true;
         }
 
-        new BreadcrumbQuickSwitcher(this.app, file, this.bc, this.settings, true).open();
+        new BreadcrumbQuickSwitcher(this.app, file, bc, this.settings, true).open();
         return true;
       },
     });
@@ -288,8 +277,9 @@ export default class BreadTrail extends Plugin {
         if (!config) return false;
         if (checking) return true;
 
-        if (!this.bc) { new BreadcrumbsMissingModal(this.app).open(); return true; }
-        new SequenceModal(this.app, file, this.bc, this.settings).open();
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return true; }
+        new SequenceModal(this.app, file, bc, this.settings).open();
         return true;
       },
     });
@@ -298,8 +288,9 @@ export default class BreadTrail extends Plugin {
       id: 'sequence-all',
       name: 'Sequence all configured parents',
       callback: () => {
-        if (!this.bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
-        new SequenceAllModal(this.app, this.bc, this.settings).open();
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
+        new SequenceAllModal(this.app, bc, this.settings).open();
       },
     });
 
@@ -337,7 +328,8 @@ export default class BreadTrail extends Plugin {
         if (checking) return !!file && file.extension === 'md';
         if (!view || !file) return false;
 
-        if (!this.bc) {
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) {
           new BreadcrumbsMissingModal(this.app).open();
           return true;
         }
@@ -376,7 +368,7 @@ export default class BreadTrail extends Plugin {
         if (this.summonedFloatingPanel?.view.file?.path === changedFile.path) {
           this.summonedFloatingPanel.panel.refresh();
         }
-        if (this.bc) this.handleAutoSequence(changedFile);
+        if (this.ensureBreadcrumbs()) this.handleAutoSequence(changedFile);
       }),
     );
 
@@ -388,12 +380,13 @@ export default class BreadTrail extends Plugin {
         if (checking) return !!file && file.extension === 'md';
         if (!file) return false;
 
-        if (!this.bc) {
+        const bc = this.ensureBreadcrumbs();
+        if (!bc) {
           new BreadcrumbsMissingModal(this.app).open();
           return true;
         }
 
-        new GraphSwitcher(this.app, file, this.bc, this.settings, () => this.saveSettings()).open();
+        new GraphSwitcher(this.app, file, bc, this.settings, () => this.saveSettings()).open();
         return true;
       },
     });
@@ -440,6 +433,53 @@ export default class BreadTrail extends Plugin {
     await this.saveData(this.settings);
   }
 
+  private ensureBreadcrumbs(): BreadcrumbsPlugin | null {
+    this.bc = getBreadcrumbs(this.app);
+    if (this.bc) this.handleBreadcrumbsReady(this.bc, false);
+    return this.bc;
+  }
+
+  private checkBreadcrumbsOnStartup(attempt = 0): void {
+    const bc = this.ensureBreadcrumbs();
+    if (bc) {
+      this.handleBreadcrumbsReady(bc, this.settings.showStartupNotice);
+      return;
+    }
+
+    if (attempt < 10) {
+      const timeout = window.setTimeout(() => this.checkBreadcrumbsOnStartup(attempt + 1), 500);
+      this.register(() => window.clearTimeout(timeout));
+      return;
+    }
+
+    if (this.settings.showStartupNotice) {
+      new Notice('Bread trail: Breadcrumbs plugin not found.');
+    }
+    new BreadcrumbsMissingModal(this.app).open();
+  }
+
+  private handleBreadcrumbsReady(bc: BreadcrumbsPlugin, showNotice: boolean): void {
+    if (showNotice) {
+      new Notice('Bread trail loaded — breadcrumbs detected.');
+    }
+
+    this.getNavigatorView()?.scheduleRefresh();
+
+    if (!this.breadcrumbsGraphEventRegistered) {
+      try {
+        bc.events.on('graph-update', () => {
+          this.getNavigatorView()?.scheduleRefresh();
+          this.refreshFloatingNavPanels();
+        });
+        this.breadcrumbsGraphEventRegistered = true;
+      } catch {
+        // BC event API not available in this version — ignore
+      }
+    }
+
+    this.syncFloatingNavPanels();
+  }
+
   // ── Floating navigator panel management ────────────────────────────────────
 
   /** Returns true when the bread-trail navigator is visible in the given sidebar. */
@@ -483,7 +523,7 @@ export default class BreadTrail extends Plugin {
       const panels = this.floatingPanels.get(view)!;
 
       if (showLeft && !panels.left) {
-        panels.left = new FloatingNavPanel(view, this.app, () => this.settings, () => this.bc, 'left', () => {
+        panels.left = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), 'left', () => {
           void this.openNavigatorInSidebar('left');
         });
         panels.left.attach();
@@ -493,7 +533,7 @@ export default class BreadTrail extends Plugin {
       }
 
       if (showRight && !panels.right) {
-        panels.right = new FloatingNavPanel(view, this.app, () => this.settings, () => this.bc, 'right', () => {
+        panels.right = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), 'right', () => {
           void this.openNavigatorInSidebar('right');
         });
         panels.right.attach();
@@ -522,7 +562,7 @@ export default class BreadTrail extends Plugin {
     this.detachSummonedFloatingPanel();
 
     const side = this.settings.floatingNavLeft && !this.settings.floatingNavRight ? 'left' : 'right';
-    const panel = new FloatingNavPanel(view, this.app, () => this.settings, () => this.bc, side, () => {
+    const panel = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), side, () => {
       this.detachSummonedFloatingPanel();
       void this.openNavigatorInSidebar(side);
     });
