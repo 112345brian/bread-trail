@@ -102,19 +102,21 @@ export class ValidationModal extends Modal {
             cls: 'bread-trail-validation-fix-btn',
           });
           fixBtn.setAttribute('title', v.fixLabel ?? 'Apply fix');
-          fixBtn.addEventListener('click', async () => {
-            fixBtn.disabled = true;
-            fixBtn.setText('Fixing…');
-            try {
-              await v.fix!();
-              fixBtn.setText('✓ Fixed');
-              fixBtn.addClass('is-fixed');
-              rowEl.addClass('is-fixed');
-            } catch (err) {
-              fixBtn.setText('Failed');
-              fixBtn.removeAttribute('disabled');
-              console.error('Bread Trail: fix failed', err);
-            }
+          fixBtn.addEventListener('click', () => {
+            void (async () => {
+              fixBtn.disabled = true;
+              fixBtn.setText('Fixing…');
+              try {
+                await v.fix!();
+                fixBtn.setText('✓ fixed');
+                fixBtn.addClass('is-fixed');
+                rowEl.addClass('is-fixed');
+              } catch (err) {
+                fixBtn.setText('Failed');
+                fixBtn.removeAttribute('disabled');
+                console.error('Bread Trail: fix failed', err);
+              }
+            })();
           });
         }
 

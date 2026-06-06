@@ -83,20 +83,22 @@ export class SequenceModal extends Modal {
       text: 'Apply',
       cls: 'mod-cta bread-trail-seq-apply-btn',
     });
-    applyBtn.addEventListener('click', async () => {
-      applyBtn.disabled = true;
-      applyBtn.setText('Applying…');
-      try {
-        await this.sequencer.apply(plan);
-        applyBtn.setText('✓ Done');
-        new Notice(`Sequenced "${plan.parent.basename}" — ${changes} change${changes !== 1 ? 's' : ''} applied.`);
-        this.close();
-      } catch (err) {
-        applyBtn.disabled = false;
-        applyBtn.setText('Apply');
-        new Notice('Sequencing failed — see console for details.');
-        console.error('Bread Trail sequencer error:', err);
-      }
+    applyBtn.addEventListener('click', () => {
+      void (async () => {
+        applyBtn.disabled = true;
+        applyBtn.setText('Applying…');
+        try {
+          await this.sequencer.apply(plan);
+          applyBtn.setText('✓ done');
+          new Notice(`Sequenced "${plan.parent.basename}" — ${changes} change${changes !== 1 ? 's' : ''} applied.`);
+          this.close();
+        } catch (err) {
+          applyBtn.disabled = false;
+          applyBtn.setText('Apply');
+          new Notice('Sequencing failed — see console for details.');
+          console.error('Bread Trail sequencer error:', err);
+        }
+      })();
     });
   }
 
@@ -220,22 +222,24 @@ export class SequenceAllModal extends Modal {
       text: 'Apply all',
       cls: 'mod-cta bread-trail-seq-apply-btn',
     });
-    applyBtn.addEventListener('click', async () => {
-      applyBtn.disabled = true;
-      applyBtn.setText('Applying…');
-      try {
-        for (const plan of this.plans) {
-          await this.sequencer.apply(plan);
+    applyBtn.addEventListener('click', () => {
+      void (async () => {
+        applyBtn.disabled = true;
+        applyBtn.setText('Applying…');
+        try {
+          for (const plan of this.plans) {
+            await this.sequencer.apply(plan);
+          }
+          applyBtn.setText('✓ done');
+          new Notice(`Sequencing complete — ${totalChanges} change${totalChanges !== 1 ? 's' : ''} applied.`);
+          this.close();
+        } catch (err) {
+          applyBtn.disabled = false;
+          applyBtn.setText('Apply all');
+          new Notice('Sequencing failed — see console for details.');
+          console.error('Bread Trail sequencer error:', err);
         }
-        applyBtn.setText('✓ Done');
-        new Notice(`Sequencing complete — ${totalChanges} change${totalChanges !== 1 ? 's' : ''} applied.`);
-        this.close();
-      } catch (err) {
-        applyBtn.disabled = false;
-        applyBtn.setText('Apply all');
-        new Notice('Sequencing failed — see console for details.');
-        console.error('Bread Trail sequencer error:', err);
-      }
+      })();
     });
   }
 }
@@ -301,22 +305,24 @@ export class RemoveStaleModal extends Modal {
       text: 'Remove all',
       cls: 'mod-cta bread-trail-seq-apply-btn',
     });
-    applyBtn.addEventListener('click', async () => {
-      applyBtn.disabled = true;
-      applyBtn.setText('Removing…');
-      try {
-        await applyStaleGlobalRemoval(this.app, this.results);
-        applyBtn.setText('✓ Done');
-        new Notice(
-          `Removed ${totalKeys} stale bare link${totalKeys !== 1 ? 's' : ''} from ${this.results.length} note${this.results.length !== 1 ? 's' : ''}.`,
-        );
-        this.close();
-      } catch (err) {
-        applyBtn.disabled = false;
-        applyBtn.setText('Remove all');
-        new Notice('Removal failed — see console for details.');
-        console.error('Bread Trail stale removal error:', err);
-      }
+    applyBtn.addEventListener('click', () => {
+      void (async () => {
+        applyBtn.disabled = true;
+        applyBtn.setText('Removing…');
+        try {
+          await applyStaleGlobalRemoval(this.app, this.results);
+          applyBtn.setText('✓ done');
+          new Notice(
+            `Removed ${totalKeys} stale bare link${totalKeys !== 1 ? 's' : ''} from ${this.results.length} note${this.results.length !== 1 ? 's' : ''}.`,
+          );
+          this.close();
+        } catch (err) {
+          applyBtn.disabled = false;
+          applyBtn.setText('Remove all');
+          new Notice('Removal failed — see console for details.');
+          console.error('Bread Trail stale removal error:', err);
+        }
+      })();
     });
   }
 }

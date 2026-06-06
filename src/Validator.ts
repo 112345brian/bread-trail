@@ -179,16 +179,16 @@ export class Validator {
               // Rename the key in the source file and add the reciprocal in the target
               const oldKey = link.key;
               const oldValue = `[[${fixTarget.basename}]]`;
-              await this.app.fileManager.processFrontMatter(sourceFile, (fm) => {
+              await this.app.fileManager.processFrontMatter(sourceFile, (fm: Record<string, unknown>) => {
                 if (oldKey in fm) delete fm[oldKey];
                 fm[finalSourceKey] = oldValue;
               });
-              await this.app.fileManager.processFrontMatter(fixTarget, (fm) => {
+              await this.app.fileManager.processFrontMatter(fixTarget, (fm: Record<string, unknown>) => {
                 fm[finalRecipKey] = recipValue;
               });
             } else {
               // Just add the missing reciprocal with the existing key
-              await this.app.fileManager.processFrontMatter(fixTarget, (fm) => {
+              await this.app.fileManager.processFrontMatter(fixTarget, (fm: Record<string, unknown>) => {
                 fm[finalRecipKey] = recipValue;
               });
             }
@@ -273,7 +273,10 @@ export class Validator {
     }
 
     // Plain string value (`up: Note Name` without brackets)
-    const raw = cache?.frontmatter?.['up'];
+    const frontmatter: unknown = cache?.frontmatter;
+    const raw = frontmatter && typeof frontmatter === 'object' && !Array.isArray(frontmatter)
+      ? (frontmatter as Record<string, unknown>)['up']
+      : undefined;
     if (typeof raw === 'string') {
       const stripped = raw.replace(/^\[\[|\]\]$/g, '').trim();
       const resolved = this.app.metadataCache.getFirstLinkpathDest(stripped, file.path);

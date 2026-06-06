@@ -51,13 +51,25 @@ function toPathName(basename: string): string {
     .replace(/^-|-$/g, '');
 }
 
+function getFrontmatterRecord(app: App, file: TFile): Record<string, unknown> | null {
+  const frontmatter: unknown = app.metadataCache.getFileCache(file)?.frontmatter;
+  if (!frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) return null;
+  return frontmatter as Record<string, unknown>;
+}
+
+function stringifyFrontmatterValue(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return null;
+}
+
 /** Read and validate `bread-trail` sequencer config from a file's frontmatter.
  *  Returns null if the key is absent or malformed. */
 export function parseLinkChildrenConfig(
   app: App,
   file: TFile,
 ): LinkChildrenConfig | null {
-  const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+  const fm = getFrontmatterRecord(app, file);
   if (!fm) return null;
 
   const bt = fm['bread-trail'];
@@ -94,10 +106,8 @@ export function findAllConfiguredParents(app: App): Array<{ file: TFile; config:
 /** Try each field name in order; return the first non-null string value. */
 function resolveField(fm: Record<string, unknown>, fields: string[]): string | null {
   for (const field of fields) {
-    const val = fm[field];
-    if (val !== undefined && val !== null && val !== '') {
-      return String(val);
-    }
+    const value = stringifyFrontmatterValue(fm[field]);
+    if (value !== null && value !== '') return value;
   }
   return null;
 }
@@ -108,7 +118,8 @@ function resolveField(fm: Record<string, unknown>, fields: string[]): string | n
  *  nested (`next: { journal: ... }`) forms. Returns null if absent. */
 function readFmKey(fm: Record<string, unknown>, key: string): string | null {
   // Flat form: fm['next.journal']
-  if (fm[key] !== undefined && fm[key] !== null) return String(fm[key]);
+  const flatValue = stringifyFrontmatterValue(fm[key]);
+  if (flatValue !== null) return flatValue;
 
   // Nested form: fm['next']['journal']
   const dot = key.indexOf('.');
@@ -118,7 +129,8 @@ function readFmKey(fm: Record<string, unknown>, key: string): string | null {
     const nested = fm[prefix];
     if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
       const val = (nested as Record<string, unknown>)[subpath];
-      if (val !== undefined && val !== null) return String(val);
+      const nestedValue = stringifyFrontmatterValue(val);
+      if (nestedValue !== null) return nestedValue;
     }
   }
   return null;
@@ -213,7 +225,7 @@ export class Sequencer {
     const ignored: ChildResult[] = [];
 
     for (const child of children) {
-      const fm = this.app.metadataCache.getFileCache(child)?.frontmatter ?? {};
+      const fm = getFrontmatterRecord(this.app, child) ?? {};
       const val = resolveField(fm, config.frontmatter);
       if (val === null) {
         ignored.push({
@@ -239,7 +251,7 @@ export class Sequencer {
       const desiredPrev = prevFile ? `[[${prevFile.basename}]]` : null;
       const desiredNext = nextFile ? `[[${nextFile.basename}]]` : null;
 
-      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+      const fm = getFrontmatterRecord(this.app, file) ?? {};
       const changes: FrontmatterChange[] = [];
 
       // prev link
@@ -253,7 +265,7 @@ export class Sequencer {
     // For ignored children: if removeStale, flag any existing next/prev links for removal
     for (const ig of ignored) {
       if (config.removeStale) {
-        const fm = this.app.metadataCache.getFileCache(ig.file)?.frontmatter ?? {};
+        const fm = getFrontmatterRecord(this.app, ig.file) ?? {};
         const staleChanges: FrontmatterChange[] = [];
         staleChanges.push(...this.diffKey(fm, prevKey, null, true));
         staleChanges.push(...this.diffKey(fm, nextKey, null, true));
@@ -273,7 +285,7 @@ export class Sequencer {
       const writes = result.changes.filter((c) => c.kind !== 'no-change');
       if (writes.length === 0) continue;
 
-      await this.app.fileManager.processFrontMatter(result.file, (fm) => {
+      await this.app.fileManager.processFrontMatter(result.file, (fm: Record<string, unknown>) => {
         for (const change of writes) {
           if (change.kind === 'add') {
             const format = detectFormat(fm, change.key, this.settings.sequenceLinkFormat);
@@ -373,7 +385,7 @@ export function findStaleGlobalLinks(app: App): StaleGlobalResult[] {
   const results: StaleGlobalResult[] = [];
 
   for (const file of app.vault.getMarkdownFiles()) {
-    const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+    const fm = getFrontmatterRecord(app, file);
     if (!fm) continue;
 
     const removeKeys: string[] = [];
@@ -382,19 +394,19 @@ export function findStaleGlobalLinks(app: App): StaleGlobalResult[] {
     const fmKeys = Object.keys(fm);
 
     // bare `next` (non-object) + any `next.*` flat key → stale
-    const nextVal = fm['next'];
-    if (nextVal !== undefined && typeof nextVal !== 'object' &&
+    const nextVal = stringifyFrontmatterValue(fm['next']);
+    if (nextVal !== null &&
         fmKeys.some((k) => k !== 'next' && k.startsWith('next.'))) {
       removeKeys.push('next');
-      currentValues['next'] = String(nextVal);
+      currentValues['next'] = nextVal;
     }
 
     // bare `prev` (non-object) + any `prev.*` flat key → stale
-    const prevVal = fm['prev'];
-    if (prevVal !== undefined && typeof prevVal !== 'object' &&
+    const prevVal = stringifyFrontmatterValue(fm['prev']);
+    if (prevVal !== null &&
         fmKeys.some((k) => k !== 'prev' && k.startsWith('prev.'))) {
       removeKeys.push('prev');
-      currentValues['prev'] = String(prevVal);
+      currentValues['prev'] = prevVal;
     }
 
     if (removeKeys.length > 0) {
@@ -408,7 +420,7 @@ export function findStaleGlobalLinks(app: App): StaleGlobalResult[] {
 /** Apply a stale-link removal plan — deletes bare keys from frontmatter. */
 export async function applyStaleGlobalRemoval(app: App, results: StaleGlobalResult[]): Promise<void> {
   for (const { file, removeKeys } of results) {
-    await app.fileManager.processFrontMatter(file, (fm) => {
+    await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
       for (const key of removeKeys) delete fm[key];
     });
   }

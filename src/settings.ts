@@ -338,7 +338,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .setName('Label property')
       .setDesc('Frontmatter property used for node labels. Uses the first value when it\'s a list. Leave blank to use filenames.')
       .addText((t) => {
-        t.setPlaceholder('aliases');
+        t.setPlaceholder('Aliases');
         t.setValue(this.plugin.settings.graphLabelProperty);
         t.onChange(async (v) => { this.plugin.settings.graphLabelProperty = v.trim(); await this.save(); });
       });
@@ -347,7 +347,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .setName('Node metadata property')
       .setDesc('Frontmatter property shown as a subtitle on each node. Leave blank to hide.')
       .addText((t) => {
-        t.setPlaceholder('status, date, author');
+        t.setPlaceholder('Status, date, author');
         t.setValue(this.plugin.settings.graphNodeMetaProperty);
         t.onChange(async (v) => { this.plugin.settings.graphNodeMetaProperty = v.trim(); await this.save(); });
       });
@@ -409,9 +409,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Metadata properties')
-      .setDesc('Frontmatter keys to display below each card title, one per line. ISO date values are formatted automatically (e.g. 2026-01-05 → Jan 5, 2026).')
+      .setDesc('Frontmatter keys to display below each card title, one per line. Iso date values are formatted automatically (e.g. 2026-01-05 → jan 5, 2026).')
       .addTextArea((t) => {
-        t.setPlaceholder('date\nstatus\ntags');
+        t.setPlaceholder('Date\nstatus\ntags');
         t.setValue(this.plugin.settings.navigatorMetaProperties.join('\n'));
         t.inputEl.rows = 4;
         t.onChange(async (v) => {
@@ -424,7 +424,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .setName('Sort-by-field property')
       .setDesc('Frontmatter key to sort by when the "by field" sort mode is active.')
       .addText((t) => {
-        t.setPlaceholder('date-created');
+        t.setPlaceholder('Date-created');
         t.setValue(this.plugin.settings.navigatorSortField);
         t.onChange(async (v) => { this.plugin.settings.navigatorSortField = v.trim(); await this.save(); });
       });
@@ -478,7 +478,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Pinned notes')
-      .setDesc('File paths to always include in Favorites, one per line. Notes with bread-trail.favorite: true in their frontmatter are also included automatically.')
+      .setDesc('File paths to always include in favorites, one per line. Notes with bread-trail.favorite: true in their frontmatter are also included automatically.')
       .addTextArea((t) => {
         t.setPlaceholder('Journal/Index.md\nProjects/MOC.md');
         t.setValue(this.plugin.settings.navigatorFavorites.join('\n'));
@@ -491,9 +491,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Favorites metadata properties')
-      .setDesc('Frontmatter keys shown in Favorites view cards, one per line.')
+      .setDesc('Frontmatter keys shown in favorites view cards, one per line.')
       .addTextArea((t) => {
-        t.setPlaceholder('date\nstatus');
+        t.setPlaceholder('Date\nstatus');
         t.setValue(this.plugin.settings.navigatorFavoritesMetaProperties.join('\n'));
         t.inputEl.rows = 3;
         t.onChange(async (v) => {
@@ -506,9 +506,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Recent metadata properties')
-      .setDesc('Frontmatter keys shown in Recent view cards, one per line. Independent from the Context/Browse card properties.')
+      .setDesc('Frontmatter keys shown in recent view cards, one per line. Independent from the context/browse card properties.')
       .addTextArea((t) => {
-        t.setPlaceholder('date\nstatus');
+        t.setPlaceholder('Date\nstatus');
         t.setValue(this.plugin.settings.navigatorRecentMetaProperties.join('\n'));
         t.inputEl.rows = 3;
         t.onChange(async (v) => {
@@ -519,16 +519,16 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Recent sort field')
-      .setDesc('Frontmatter date field to sort by in Recent view. Leave blank to use file modification time.')
+      .setDesc('Frontmatter date field to sort by in recent view. Leave blank to use file modification time.')
       .addText((t) => {
-        t.setPlaceholder('date-modified');
+        t.setPlaceholder('Date-modified');
         t.setValue(this.plugin.settings.navigatorRecentSortField);
         t.onChange(async (v) => { this.plugin.settings.navigatorRecentSortField = v.trim(); await this.save(); });
       });
 
     new Setting(el)
       .setName('Recent view limit')
-      .setDesc('Maximum number of notes to show in Recent view.')
+      .setDesc('Maximum number of notes to show in recent view.')
       .addText((t) => {
         t.inputEl.type = 'number';
         t.inputEl.min = '1';
@@ -582,7 +582,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .setName('Exclude folders')
       .setDesc('Comma-separated folder paths. Notes inside are hidden from the navigator.')
       .addTextArea((t) => {
-        t.setPlaceholder('Templates, Archive/Old');
+        t.setPlaceholder('Templates, archive/old');
         t.setValue(this.plugin.settings.navigatorExcludeFolders.join(', '));
         t.inputEl.rows = 2;
         t.onChange(async (v) => {
@@ -608,7 +608,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .setName('Exclude by frontmatter')
       .setDesc('"key" hides notes where that key is truthy. "key:value" matches exactly. Example: type:template, draft, status:archived')
       .addTextArea((t) => {
-        t.setPlaceholder('type:template, draft, status:archived');
+        t.setPlaceholder('Type:template, draft, status:archived');
         t.setValue(this.plugin.settings.navigatorExcludeFrontmatter.join(', '));
         t.inputEl.rows = 2;
         t.onChange(async (v) => {
@@ -644,7 +644,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Require path names when edges conflict')
-      .setDesc('When a note has 2+ edges of the same type, every one must use a named sub-path (e.g. next.journal). A plain "next" alongside any other next-type link is always flagged.')
+      .setDesc('When a note has 2+ edges of the same type, every one must use a named sub-path (e.g. Next.journal). A plain "next" alongside any other next-type link is always flagged.')
       .addDropdown((d) => {
         d.addOption('error', 'Error'); d.addOption('warning', 'Warning'); d.addOption('off', 'Off');
         d.setValue(this.plugin.settings.validationRules.requireSpecificity.severity);
@@ -653,9 +653,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Edge types to check for conflicts')
-      .setDesc('Comma-separated BC edge-type names. Only these types trigger the conflict rule.')
+      .setDesc('Comma-separated bc edge-type names. Only these types trigger the conflict rule.')
       .addText((t) => {
-        t.setPlaceholder('next, prev');
+        t.setPlaceholder('Next, prev');
         t.setValue(this.plugin.settings.validationRules.requireSpecificity.edgeTypes.join(', '));
         t.onChange(async (v) => {
           this.plugin.settings.validationRules.requireSpecificity.edgeTypes = v.split(',').map((s) => s.trim()).filter(Boolean);

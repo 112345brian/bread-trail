@@ -81,7 +81,7 @@ export function extractExcerpt(content: string, maxLength = 200): string {
     .replace(/`[^`]+`/g, '')                              // inline code
     .replace(/```[\s\S]*?```/g, '')                       // code blocks
     .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')    // wikilinks → display text
-    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')             // markdown links
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')              // markdown links
     .replace(/^[-*+]\s+/gm, '')                           // list bullets
     .replace(/^\d+\.\s+/gm, '')                           // ordered lists
     .replace(/^>\s+/gm, '')                               // blockquotes
