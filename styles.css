@@ -1441,8 +1441,15 @@
   display: none;
 }
 
-/* Mobile: keep in flow (holds space so toolbar height stays constant),
-   just make it invisible and non-interactive */
+/* Mobile: browser nav sits inline with the action buttons (same row).
+   flex:1 fills the space to the left of the action buttons.
+   visibility:hidden when inactive keeps action buttons in place. */
+.is-mobile .bread-trail-nav-browser-nav {
+  width: auto;
+  flex: 1;
+  padding-top: 0;
+}
+
 .is-mobile .bread-trail-nav-browser-nav.is-inactive {
   display: flex;
   visibility: hidden;
@@ -2302,9 +2309,10 @@
   height: 18px;
 }
 
-/* Restore auto margin — action buttons push to the right of their row */
+/* No margin-left:auto needed — the browser nav's flex:1 naturally pushes
+   action buttons to the right of the second row */
 .is-mobile .bread-trail-nav-action-btn:first-of-type {
-  margin-left: auto;
+  margin-left: 0;
 }
 
 /* Taller cards for easier tapping */

@@ -69,6 +69,27 @@ export function Toolbar({ data, actions }: ToolbarProps) {
         )}
       </div>
 
+      {/* Browser nav: always rendered so mobile toolbar height stays constant.
+          On desktop: display:none when inactive. On mobile: sits inline with the
+          action buttons (flex:1 fills leftover space), visibility:hidden when
+          inactive so action buttons never shift position. */}
+      <div class={`bread-trail-nav-browser-nav${isBrowser ? '' : ' is-inactive'}`}>
+        <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
+          onClick={actions.browserBack}>
+          <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
+        </button>
+        <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
+          {browserTitle}
+        </span>
+        {browserViewMode === 'bc' && browserSortCycle.length > 1 && (
+          <button class="bread-trail-nav-sort-btn bread-trail-nav-browser-sort"
+            aria-label={SORT_LABEL[browserSortMode] ?? browserSortMode}
+            onClick={actions.browserCycleSort}>
+            <OIcon name={SORT_ICON[browserSortMode] ?? 'list-ordered'} />
+          </button>
+        )}
+      </div>
+
       {(vis.goToActive || vis.reset) && (
         <ActionBtn
           icon={isBrowser && atActive ? 'rotate-ccw' : 'crosshair'}
@@ -90,26 +111,6 @@ export function Toolbar({ data, actions }: ToolbarProps) {
       >
         <OIcon name="navigation" />
       </button>
-
-      {/* Always rendered so mobile layout doesn't shift when switching modes.
-          On desktop it's display:none when inactive; on mobile visibility:hidden
-          so it still holds its space in the bottom toolbar. */}
-      <div class={`bread-trail-nav-browser-nav${isBrowser ? '' : ' is-inactive'}`}>
-        <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
-          onClick={actions.browserBack}>
-          <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
-        </button>
-        <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
-          {browserTitle}
-        </span>
-        {browserViewMode === 'bc' && browserSortCycle.length > 1 && (
-          <button class="bread-trail-nav-sort-btn bread-trail-nav-browser-sort"
-            aria-label={SORT_LABEL[browserSortMode] ?? browserSortMode}
-            onClick={actions.browserCycleSort}>
-            <OIcon name={SORT_ICON[browserSortMode] ?? 'list-ordered'} />
-          </button>
-        )}
-      </div>
     </div>
   );
 }
