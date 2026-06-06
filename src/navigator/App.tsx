@@ -9,6 +9,8 @@ interface AppProps {
   actions: NavActions;
   app: App;
   component: Component;
+  /** On mobile the toolbar is rendered externally; skip it inside the app. */
+  hideToolbar?: boolean;
 }
 
 function FolderRow({ name, onClick }: { name: string; onClick: () => void }) {
@@ -47,7 +49,7 @@ function BrowserItemEl({ item, actions, app, component }: {
   return <Card data={item.data} actions={actions} app={app} component={component} />;
 }
 
-export function NavigatorApp({ data, actions, app, component }: AppProps) {
+export function NavigatorApp({ data, actions, app, component, hideToolbar }: AppProps) {
   const { toolbar, sections, flatCards, groups, browserItems, emptyMessage } = data;
 
   const renderContent = () => {
@@ -85,7 +87,7 @@ export function NavigatorApp({ data, actions, app, component }: AppProps) {
 
   return (
     <div class="bread-trail-nav">
-      <Toolbar data={toolbar} actions={actions} />
+      {!hideToolbar && <Toolbar data={toolbar} actions={actions} />}
       <div class="bread-trail-nav-content">
         {renderContent()}
       </div>
