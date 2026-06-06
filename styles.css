@@ -1309,8 +1309,10 @@
 
 /* Strip Obsidian's default view-content padding so our scroll area reaches
    all the way to the leaf's bottom chrome (the breadcrumb bar on mobile). */
-.workspace-leaf[data-type="bread-trail-navigator"] .view-content {
-  padding: 0;
+.workspace-leaf[data-type="bread-trail-navigator"] .view-content,
+.workspace-leaf[data-type="bread-trail-navigator"] .workspace-leaf-content {
+  padding: 0 !important;
+  margin-bottom: 0 !important;
   overflow: hidden;
 }
 
@@ -2260,7 +2262,7 @@
 .is-mobile .bread-trail-nav-toolbar {
   border-top: 1px solid var(--background-modifier-border);
   border-bottom: none;
-  padding-bottom: 0;
+  padding: 6px 10px 0;
 }
 
 /* Mode group spans the full toolbar width — each button gets an equal share,
