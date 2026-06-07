@@ -1006,6 +1006,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     for (let i = 0; i < sections.length; i++) {
       const sec = sections[i];
+      if (!sec) continue;
       const def = DEFS[sec.type] ?? { name: sec.type, icon: 'file', desc: '' };
       const isCustom = !fixedTypes.has(sec.type);
 
@@ -1027,7 +1028,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
         btn.extraSettingsEl.toggleClass('is-disabled', i === 0);
         btn.onClick(async () => {
           if (i === 0) return;
-          [sections[i - 1], sections[i]] = [sections[i], sections[i - 1]];
+          const a = sections[i - 1], b = sections[i];
+          if (!a || !b) return;
+          sections[i - 1] = b; sections[i] = a;
           await this.save();
           this.display();
         });
@@ -1039,7 +1042,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
         btn.extraSettingsEl.toggleClass('is-disabled', i === sections.length - 1);
         btn.onClick(async () => {
           if (i === sections.length - 1) return;
-          [sections[i], sections[i + 1]] = [sections[i + 1], sections[i]];
+          const a = sections[i], b = sections[i + 1];
+          if (!a || !b) return;
+          sections[i] = b; sections[i + 1] = a;
           await this.save();
           this.display();
         });

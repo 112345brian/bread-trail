@@ -191,7 +191,7 @@ export function NavigatorApp({ data, actions, app, component }: AppProps) {
             type="text"
             placeholder="Filter notes…"
             value={filterQuery}
-            ref={(el: HTMLInputElement | null) => el && !filterQuery && el.focus()}
+            ref={(el: HTMLInputElement | null) => { if (el && !filterQuery) el.focus(); }}
             onInput={(e: Event) => actions.setFilter((e.target as HTMLInputElement).value)}
             onKeyDown={(e: KeyboardEvent) => {
               if (e.key === 'Escape') actions.toggleFilter();
