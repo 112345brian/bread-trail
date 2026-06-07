@@ -33,7 +33,14 @@ export class NavigatorView extends ItemView {
   private snippetCache = new Map<string, string>();
   /** First image link found in each file, null if none. */
   private imageCache = new Map<string, string | null>();
+  /** Last fully-computed NavData — rendered immediately on the next refresh so
+   *  the panel never shows a blank flash while the async computation runs. */
+  private navDataCache: NavData | null = null;
   private refreshTimer?: number;
+  /** Whether the filter bar is visible. */
+  private filterActive = false;
+  /** Current filter string (empty = no filter). */
+  private filterQuery = '';
   /** When false, cards show only title + metadata — no excerpts or images. */
   private previewExpanded: boolean;
 
@@ -122,8 +129,21 @@ export class NavigatorView extends ItemView {
   // ── Render entry ───────────────────────────────────────────────────────────
 
   async refresh() {
-    const data = await this.computeNavData();
     const actions = this.buildActions();
+
+    // Paint the last-known data immediately (stale-while-revalidate).
+    // This eliminates the blank-panel flash on tab switches and active-file changes
+    // since all the real data (graph edges, metadata, snippets) is in-memory anyway.
+    if (this.navDataCache) {
+      render(
+        h(NavigatorApp, { data: this.navDataCache, actions, app: this.app, component: this }),
+        this.contentEl,
+      );
+    }
+
+    const data = await this.computeNavData();
+    this.navDataCache = data;
+
     render(
       h(NavigatorApp, { data, actions, app: this.app, component: this }),
       this.contentEl,
@@ -184,30 +204,65 @@ export class NavigatorView extends ItemView {
     const bc = this.getBc();
     const activeFile = this.app.workspace.getActiveFile();
     const toolbar = this.computeToolbarData(activeFile, bc);
+    const layoutMode = this.settings.navigatorLayoutMode;
+    const filterQuery = this.filterQuery;
+
+    let raw: Omit<NavData, 'toolbar' | 'mode' | 'layoutMode' | 'filterQuery'>;
 
     if (this.mode === 'recent') {
-      const content = await this.computeRecentData(activeFile, bc);
-      return { toolbar, mode: this.mode, ...content };
+      raw = await this.computeRecentData(activeFile, bc);
+    } else if (this.mode === 'favorites') {
+      raw = await this.computePinboardData(activeFile);
+    } else if (!bc) {
+      raw = { sections: [], emptyMessage: 'Breadcrumbs plugin not detected.' };
+    } else if (this.mode === 'browser') {
+      raw = this.browserViewMode === 'files'
+        ? await this.computeFileBrowserData(activeFile)
+        : await this.computeBrowserData(bc, activeFile);
+    } else {
+      raw = await this.computeContextData(bc, activeFile);
     }
-    if (this.mode === 'favorites') {
-      const content = await this.computeFavoritesData(activeFile);
-      return { toolbar, mode: this.mode, ...content };
-    }
-    if (!bc) {
-      return { toolbar, mode: this.mode, sections: [], emptyMessage: 'Breadcrumbs plugin not detected.' };
-    }
-    if (this.mode === 'browser') {
-      if (this.browserViewMode === 'files') {
-        const content = await this.computeFileBrowserData(activeFile);
-        return { toolbar, mode: this.mode, ...content };
-      } else {
-        const content = await this.computeBrowserData(bc, activeFile);
-        return { toolbar, mode: this.mode, ...content };
-      }
-    }
-    // context mode
-    const content = await this.computeContextData(bc, activeFile);
-    return { toolbar, mode: this.mode, ...content };
+
+    const base: NavData = { toolbar, mode: this.mode, layoutMode, filterQuery, ...raw };
+    return filterQuery.trim() ? this.applyFilter(base) : base;
+  }
+
+  /** Filter all card lists in a NavData by the current query string. */
+  private applyFilter(data: NavData): NavData {
+    const q = data.filterQuery.trim().toLowerCase();
+    if (!q) return data;
+    const match = (c: CardData) => c.label.toLowerCase().includes(q);
+
+    const filteredSections = data.sections
+      .map((s) => ({
+        ...s,
+        cards: s.cards.filter(match),
+        groups: s.groups?.map((g) => ({ ...g, cards: g.cards.filter(match) })).filter((g) => g.cards.length > 0),
+      }))
+      .filter((s) => (s.groups ? s.groups.length > 0 : s.cards.length > 0));
+
+    const filteredFlatCards = data.flatCards?.filter(match);
+    const filteredGroups = data.groups
+      ?.map((g) => ({ ...g, cards: g.cards.filter(match) }))
+      .filter((g) => g.cards.length > 0);
+    const filteredBrowserItems = data.browserItems?.filter(
+      (item) => item.kind === 'folder' || match(item.data),
+    );
+
+    const isEmpty =
+      filteredSections.length === 0 &&
+      (!filteredFlatCards || filteredFlatCards.length === 0) &&
+      (!filteredGroups || filteredGroups.length === 0) &&
+      (!filteredBrowserItems || !filteredBrowserItems.some((i) => i.kind === 'card'));
+
+    return {
+      ...data,
+      sections: filteredSections,
+      flatCards: filteredFlatCards,
+      groups: filteredGroups,
+      browserItems: filteredBrowserItems,
+      emptyMessage: isEmpty ? `No notes matching "${data.filterQuery}"` : data.emptyMessage,
+    };
   }
 
   private computeToolbarData(activeFile: TFile | null, bc: BreadcrumbsPlugin | null): ToolbarData {
@@ -271,6 +326,8 @@ export class NavigatorView extends ItemView {
       browserSortMode,
       browserSortCycle,
       followMode: this.followMode,
+      layoutMode: this.settings.navigatorLayoutMode,
+      filterActive: this.filterActive,
     };
   }
 
@@ -355,6 +412,36 @@ export class NavigatorView extends ItemView {
       });
     }
 
+    // ── Siblings ───────────────────────────────────────────────────────────
+    if (this.settings.navigatorShowSiblings && parents.length > 0) {
+      const seen = new Set<string>([activeFile.path]);
+      parents.forEach((p) => seen.add(p.file.path));
+      children.forEach((c) => seen.add(c.file.path));
+
+      const siblings: NavNote[] = [];
+      for (const parent of parents) {
+        for (const child of this.getFolderChildren(parent.file, bc)) {
+          if (seen.has(child.file.path)) continue;
+          seen.add(child.file.path);
+          siblings.push(child);
+        }
+      }
+
+      if (siblings.length > 0) {
+        const sibSort = this.getSort('siblings', ['alpha', 'alpha-desc', 'mtime', 'ctime', 'sequence']);
+        const sibCards = await Promise.all(
+          this.sortNotes(siblings, sibSort).map((n) =>
+            this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) }),
+          ),
+        );
+        sections.push({
+          id: 'siblings', label: 'Siblings', icon: 'users', cards: sibCards,
+          isCollapsed: this.collapsedSections.has('siblings'),
+          sortMode: sibSort.mode, sortCycle: sibSort.cycle, isChain: false,
+        });
+      }
+    }
+
     return { sections };
   }
 
@@ -397,18 +484,9 @@ export class NavigatorView extends ItemView {
       return { sections: [], flatCards };
     }
 
-    // Roots view — stack is empty
+    // Roots (home) view — stack is empty
     if (this.browserStack.length === 0) {
-      const sort = this.getSort('browser-child', cycle);
-      const roots = this.getVaultRoots(bc);
-      if (roots.length === 0) {
-        return { sections: [], emptyMessage: 'No top-level notes found. Add BC parent/child relationships to get started.' };
-      }
-      const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' as NavRelation }));
-      const flatCards = await Promise.all(
-        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
-      );
-      return { sections: [], flatCards };
+      return this.computeHomeData(bc, activeFile, cycle);
     }
 
     // Folder view
@@ -440,6 +518,120 @@ export class NavigatorView extends ItemView {
       sorted.map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
     );
     return { sections: [], flatCards };
+  }
+
+  private async computeHomeData(
+    bc: BreadcrumbsPlugin,
+    activeFile: TFile | null,
+    cycle: SortMode[],
+  ): Promise<Pick<NavData, 'sections' | 'flatCards' | 'emptyMessage'>> {
+    const showFavs = this.settings.navigatorHomeShowFavorites;
+    const showRecents = this.settings.navigatorHomeShowRecents;
+
+    // No home sections configured — return flat cards (original behaviour)
+    if (!showFavs && !showRecents) {
+      const sort = this.getSort('browser-child', cycle);
+      const roots = this.getVaultRoots(bc);
+      if (roots.length === 0) {
+        return { sections: [], emptyMessage: 'No top-level notes found. Add BC parent/child relationships to get started.' };
+      }
+      const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' as NavRelation }));
+      const flatCards = await Promise.all(
+        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+      );
+      return { sections: [], flatCards };
+    }
+
+    const sections: SectionData[] = [];
+
+    // ── BC roots section ──────────────────────────────────────────────────
+    const sort = this.getSort('browser-child', cycle);
+    const roots = this.getVaultRoots(bc);
+    if (roots.length > 0) {
+      const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' as NavRelation }));
+      const cards = await Promise.all(
+        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+      );
+      sections.push({
+        id: 'home-notes', label: 'Notes', icon: 'git-branch', cards,
+        isCollapsed: this.collapsedSections.has('home-notes'),
+        sortMode: sort.mode, sortCycle: [], isChain: false,
+      });
+    }
+
+    // ── Favorites section ─────────────────────────────────────────────────
+    if (showFavs) {
+      const cards = await this.buildHomeFavoriteCards(activeFile, bc);
+      if (cards.length > 0) {
+        sections.push({
+          id: 'home-favorites', label: 'Favorites', icon: 'star', cards,
+          isCollapsed: this.collapsedSections.has('home-favorites'),
+          sortMode: 'alpha', sortCycle: [], isChain: false,
+        });
+      }
+    }
+
+    // ── Recent section ────────────────────────────────────────────────────
+    if (showRecents) {
+      const cards = await this.buildHomeRecentCards(activeFile);
+      if (cards.length > 0) {
+        sections.push({
+          id: 'home-recent', label: 'Recent', icon: 'clock', cards,
+          isCollapsed: this.collapsedSections.has('home-recent'),
+          sortMode: 'mtime', sortCycle: [], isChain: false,
+        });
+      }
+    }
+
+    if (sections.length === 0) {
+      return { sections: [], emptyMessage: 'No top-level notes found. Add BC parent/child relationships to get started.' };
+    }
+    return { sections };
+  }
+
+  private async buildHomeFavoriteCards(activeFile: TFile | null, bc: BreadcrumbsPlugin | null): Promise<CardData[]> {
+    const files = this.app.vault.getMarkdownFiles()
+      .filter((f) => !this.isExcluded(f) && this.isFavorite(f, bc));
+
+    files.sort((a, b) => {
+      const aIdx = this.settings.navigatorFavorites.indexOf(a.path);
+      const bIdx = this.settings.navigatorFavorites.indexOf(b.path);
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      if (aIdx !== -1) return -1;
+      if (bIdx !== -1) return 1;
+      return a.basename.localeCompare(b.basename);
+    });
+
+    const metaProps = this.settings.navigatorFavoritesMetaProperties;
+    return Promise.all(
+      files.map((f) => this.buildCardData({ file: f, relation: 'child' }, activeFile, { hasDrillIn: false, metaProps })),
+    );
+  }
+
+  private async buildHomeRecentCards(activeFile: TFile | null, limitOverride?: number): Promise<CardData[]> {
+    const limit = limitOverride ?? this.settings.navigatorHomeRecentsCount;
+    const sortField = this.settings.navigatorRecentSortField;
+
+    let files = this.app.vault.getMarkdownFiles().filter((f) => !this.isExcluded(f));
+
+    if (sortField) {
+      files.sort((a, b) => {
+        const fa = this.getFmString(a, sortField) ?? '';
+        const fb = this.getFmString(b, sortField) ?? '';
+        if (!fa && !fb) return b.stat.mtime - a.stat.mtime;
+        if (!fa) return 1;
+        if (!fb) return -1;
+        return fb.localeCompare(fa);
+      });
+    } else {
+      files.sort((a, b) => b.stat.mtime - a.stat.mtime);
+    }
+
+    return Promise.all(
+      files.slice(0, limit).map((f) =>
+        this.buildCardData({ file: f, relation: 'child' }, activeFile, { hasDrillIn: false, autoTimestamp: true, sortField }),
+      ),
+    );
   }
 
   private async computeFileBrowserData(
@@ -525,38 +717,262 @@ export class NavigatorView extends ItemView {
     return { sections: [], flatCards };
   }
 
-  private async computeFavoritesData(
-    activeFile: TFile | null,
-  ): Promise<Pick<NavData, 'sections' | 'flatCards' | 'emptyMessage'>> {
-    const pinnedPaths = new Set(this.settings.navigatorFavorites);
+  /** Returns true if a file qualifies as a favorite under any of the three criteria. */
+  private isFavorite(file: TFile, bc: BreadcrumbsPlugin | null): boolean {
+    if (this.settings.navigatorFavorites.includes(file.path)) return true;
+    const bt = this.getBreadTrailFm(file);
+    if (bt?.['favorite'] === true) return true;
+    const parentPath = this.settings.navigatorFavoritesParentNote.trim();
+    if (parentPath && bc) {
+      for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
+        if (e.edge_type?.toLowerCase() !== 'up') continue;
+        const p = e.target_path?.(bc.graph) ?? e.target;
+        if (p === parentPath) return true;
+      }
+      for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
+        if (e.edge_type?.toLowerCase() !== 'down') continue;
+        const p = e.source_path?.(bc.graph) ?? e.source;
+        if (p === parentPath) return true;
+      }
+    }
+    return false;
+  }
 
-    const files = this.app.vault.getMarkdownFiles().filter((f) => {
-      if (pinnedPaths.has(f.path)) return true;
-      const bt = this.getBreadTrailFm(f);
-      return bt?.['favorite'] === true;
-    });
+  private async computePinboardData(
+    activeFile: TFile | null,
+  ): Promise<Pick<NavData, 'sections' | 'emptyMessage'>> {
+    const bc = this.getBc();
+    const sections: SectionData[] = [];
+
+    const DEFAULTS: Record<string, { label: string; icon: string }> = {
+      favorites: { label: 'Favorites', icon: 'star'       },
+      current:   { label: 'Current',   icon: 'folder-open' },
+      recents:   { label: 'Recent',    icon: 'clock'       },
+      roots:     { label: 'Notes',     icon: 'git-branch'  },
+    };
+
+    for (const sec of this.settings.navigatorPinboardSections) {
+      if (!sec.enabled) continue;
+      const def = DEFAULTS[sec.type] ?? { label: sec.type, icon: 'file' };
+      const label = sec.label || def.label;
+
+      switch (sec.type) {
+        case 'favorites': {
+          const cards = await this.buildPinboardFavoritesCards(activeFile, bc);
+          if (cards.length > 0) {
+            sections.push({
+              id: 'pb-favorites', label, icon: def.icon, cards,
+              isCollapsed: this.collapsedSections.has('pb-favorites'),
+              sortMode: 'alpha', sortCycle: [], isChain: false,
+            });
+          }
+          break;
+        }
+
+        case 'current': {
+          const cards = await this.buildPinboardCurrentCards(activeFile, bc, sec.limit);
+          if (cards.length > 0) {
+            // Use the active note's label as the section header if no custom label set
+            const sectionLabel = sec.label
+              ? sec.label
+              : (activeFile ? this.getLabel(activeFile) : def.label);
+            sections.push({
+              id: 'pb-current', label: sectionLabel, icon: def.icon, cards,
+              isCollapsed: this.collapsedSections.has('pb-current'),
+              sortMode: 'sequence', sortCycle: [], isChain: false,
+            });
+          }
+          break;
+        }
+
+        case 'recents': {
+          const limit = sec.limit > 0 ? sec.limit : this.settings.navigatorHomeRecentsCount;
+          const cards = await this.buildHomeRecentCards(activeFile, limit);
+          if (cards.length > 0) {
+            sections.push({
+              id: 'pb-recents', label, icon: def.icon, cards,
+              isCollapsed: this.collapsedSections.has('pb-recents'),
+              sortMode: 'mtime', sortCycle: [], isChain: false,
+            });
+          }
+          break;
+        }
+
+        case 'roots': {
+          if (!bc) break;
+          const cards = await this.buildPinboardRootsCards(activeFile, bc);
+          if (cards.length > 0) {
+            sections.push({
+              id: 'pb-roots', label, icon: def.icon, cards,
+              isCollapsed: this.collapsedSections.has('pb-roots'),
+              sortMode: 'alpha', sortCycle: [], isChain: false,
+            });
+          }
+          break;
+        }
+
+        case 'tag': {
+          if (!sec.param) break;
+          const tagCards = await this.buildPinboardTagCards(activeFile, sec.param, sec.limit);
+          if (tagCards.length > 0) {
+            const secLabel = sec.label || `#${sec.param}`;
+            const secId = `pb-tag-${sec.param}`;
+            sections.push({
+              id: secId, label: secLabel, icon: 'tag', cards: tagCards,
+              isCollapsed: this.collapsedSections.has(secId),
+              sortMode: 'alpha', sortCycle: [], isChain: false,
+            });
+          }
+          break;
+        }
+
+        case 'filter': {
+          if (!sec.param) break;
+          const filterCards = await this.buildPinboardFilterCards(activeFile, sec.param, sec.limit);
+          if (filterCards.length > 0) {
+            const secLabel = sec.label || sec.param;
+            const secId = `pb-filter-${sec.param}`;
+            sections.push({
+              id: secId, label: secLabel, icon: 'filter', cards: filterCards,
+              isCollapsed: this.collapsedSections.has(secId),
+              sortMode: 'alpha', sortCycle: [], isChain: false,
+            });
+          }
+          break;
+        }
+      }
+    }
+
+    if (sections.length === 0) {
+      return {
+        sections: [],
+        emptyMessage: 'Nothing to show. Enable sections in Settings → Navigator → Pinboard.',
+      };
+    }
+    return { sections };
+  }
+
+  // ── Pinboard section builders ──────────────────────────────────────────────
+
+  private async buildPinboardFavoritesCards(activeFile: TFile | null, bc: BreadcrumbsPlugin | null): Promise<CardData[]> {
+    const files = this.app.vault.getMarkdownFiles()
+      .filter((f) => !this.isExcluded(f) && this.isFavorite(f, bc));
 
     files.sort((a, b) => {
-      const aIdx = this.settings.navigatorFavorites.indexOf(a.path);
-      const bIdx = this.settings.navigatorFavorites.indexOf(b.path);
-      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
-      if (aIdx !== -1) return -1;
-      if (bIdx !== -1) return 1;
+      const ai = this.settings.navigatorFavorites.indexOf(a.path);
+      const bi = this.settings.navigatorFavorites.indexOf(b.path);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
       return a.basename.localeCompare(b.basename);
     });
 
-    if (files.length === 0) {
-      return {
-        sections: [],
-        emptyMessage: 'No favorites yet. Add bread-trail.favorite: true to a note, or pin paths in settings.',
-      };
-    }
-
     const metaProps = this.settings.navigatorFavoritesMetaProperties;
-    const flatCards = await Promise.all(
-      files.map((file) => this.buildCardData({ file, relation: 'child' }, activeFile, { hasDrillIn: false, metaProps })),
+    return Promise.all(
+      files.map((f) => this.buildCardData({ file: f, relation: 'child' }, activeFile, { hasDrillIn: false, metaProps })),
     );
-    return { sections: [], flatCards };
+  }
+
+  private async buildPinboardCurrentCards(
+    activeFile: TFile | null,
+    bc: BreadcrumbsPlugin | null,
+    limit: number,
+  ): Promise<CardData[]> {
+    if (!activeFile || !bc) return [];
+    const children = this.getFolderChildren(activeFile, bc);
+    if (children.length === 0) return [];
+
+    const cycle: SortMode[] = ['sequence', 'alpha', 'alpha-desc', 'mtime', 'ctime'];
+    const override = this.getChildSortOverride(activeFile);
+    if (override) this.applyChildSortOverride('pb-current', override, cycle);
+    const sort = this.getSort('pb-current', cycle);
+    const sorted = this.sortNotes(children, sort);
+    const limited = limit > 0 ? sorted.slice(0, limit) : sorted;
+
+    return Promise.all(
+      limited.map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+    );
+  }
+
+  private async buildPinboardRootsCards(activeFile: TFile | null, bc: BreadcrumbsPlugin): Promise<CardData[]> {
+    const roots = this.getVaultRoots(bc);
+    return Promise.all(
+      roots.map((f) => this.buildCardData(
+        { file: f, relation: 'child' },
+        activeFile,
+        { hasDrillIn: this.hasChildren(f, bc) },
+      )),
+    );
+  }
+
+  private async buildPinboardTagCards(activeFile: TFile | null, tag: string, limit: number): Promise<CardData[]> {
+    const bc = this.getBc();
+    let files = this.app.vault.getMarkdownFiles()
+      .filter((f) => !this.isExcluded(f) && this.fileHasTag(f, tag));
+    files.sort((a, b) => a.basename.localeCompare(b.basename));
+    if (limit > 0) files = files.slice(0, limit);
+    return Promise.all(
+      files.map((f) => this.buildCardData(
+        { file: f, relation: 'child' },
+        activeFile,
+        { hasDrillIn: bc ? this.hasChildren(f, bc) : false },
+      )),
+    );
+  }
+
+  private async buildPinboardFilterCards(activeFile: TFile | null, pattern: string, limit: number): Promise<CardData[]> {
+    const bc = this.getBc();
+    let files = this.app.vault.getMarkdownFiles()
+      .filter((f) => !this.isExcluded(f) && this.fileMatchesPattern(f, pattern));
+    files.sort((a, b) => a.basename.localeCompare(b.basename));
+    if (limit > 0) files = files.slice(0, limit);
+    return Promise.all(
+      files.map((f) => this.buildCardData(
+        { file: f, relation: 'child' },
+        activeFile,
+        { hasDrillIn: bc ? this.hasChildren(f, bc) : false },
+      )),
+    );
+  }
+
+  /** True if the file has the given tag (or any sub-tag beneath it). */
+  private fileHasTag(file: TFile, tag: string): boolean {
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache) return false;
+    const normalised = tag.toLowerCase().replace(/^#/, '');
+    // Inline #tags from the cache
+    if (cache.tags) {
+      for (const { tag: t } of cache.tags) {
+        const clean = t.replace(/^#/, '').toLowerCase();
+        if (clean === normalised || clean.startsWith(normalised + '/')) return true;
+      }
+    }
+    // Frontmatter tags
+    const fmTags = cache.frontmatter?.['tags'];
+    const list: string[] = Array.isArray(fmTags)
+      ? fmTags.filter((v): v is string => typeof v === 'string')
+      : typeof fmTags === 'string' ? [fmTags] : [];
+    for (const t of list) {
+      const clean = t.replace(/^#/, '').toLowerCase();
+      if (clean === normalised || clean.startsWith(normalised + '/')) return true;
+    }
+    return false;
+  }
+
+  /** True if the file's frontmatter matches "key" (truthy) or "key:value" (exact). */
+  private fileMatchesPattern(file: TFile, pattern: string): boolean {
+    const fm: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm || typeof fm !== 'object' || Array.isArray(fm)) return false;
+    const frontmatter = fm as Record<string, unknown>;
+    const colonIdx = pattern.indexOf(':');
+    if (colonIdx === -1) {
+      const val = frontmatter[pattern];
+      return val !== undefined && val !== null && val !== false && val !== '' && val !== 0;
+    }
+    const key = pattern.slice(0, colonIdx).trim();
+    const expected = pattern.slice(colonIdx + 1).trim();
+    const val = frontmatter[key];
+    return (typeof val === 'string' || typeof val === 'number') && String(val).trim() === expected;
   }
 
   // ── Card data builder ──────────────────────────────────────────────────────
@@ -748,10 +1164,70 @@ export class NavigatorView extends ItemView {
         if (this.followMode) this.followActiveFile();
         else { this.followTargets = []; void this.refresh(); }
       },
+
+      setLayoutMode: (mode) => {
+        this.settings.navigatorLayoutMode = mode;
+        void this.saveSettings();
+        void this.refresh();
+      },
+
+      setBrowserSortMode: (mode) => {
+        const cycle = this.getBrowserSortCycle();
+        const reordered = [mode, ...cycle.filter((m) => m !== mode)];
+        this.sorts.set('browser-child', { mode, cycle: reordered });
+        void this.refresh();
+      },
+
+      createNote: () => {
+        void this.tryCreateNote('');
+      },
+
+      createChildNote: () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        const upLink = activeFile ? `"[[${activeFile.basename}]]"` : '';
+        void this.tryCreateNote(upLink ? `---\nup: ${upLink}\n---\n\n` : '');
+      },
+
+      toggleFilter: () => {
+        this.filterActive = !this.filterActive;
+        if (!this.filterActive) this.filterQuery = '';
+        void this.refresh();
+      },
+
+      setFilter: (query: string) => {
+        this.filterQuery = query;
+        this.scheduleRefresh(16);
+      },
     };
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  private async tryCreateNote(initialContent: string): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    const folderPath = activeFile?.parent?.path ?? '';
+    const baseName = 'Untitled';
+
+    const attempt = async (name: string): Promise<void> => {
+      const path = folderPath ? `${folderPath}/${name}.md` : `${name}.md`;
+      try {
+        const newFile = await this.app.vault.create(path, initialContent);
+        await (this.app.workspace.getLeaf('tab')).openFile(newFile);
+      } catch {
+        let i = 1;
+        while (i < 100) {
+          const p = folderPath ? `${folderPath}/${name} ${i}.md` : `${name} ${i}.md`;
+          try {
+            const newFile = await this.app.vault.create(p, initialContent);
+            await (this.app.workspace.getLeaf('tab')).openFile(newFile);
+            return;
+          } catch { i++; }
+        }
+      }
+    };
+
+    await attempt(baseName);
+  }
 
   private applyMode(mode: NavMode) {
     this.mode = mode;

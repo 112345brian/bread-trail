@@ -1,5 +1,5 @@
-import { setIcon } from 'obsidian';
-import type { ToolbarData, NavActions } from './types';
+import { Menu, setIcon } from 'obsidian';
+import type { ToolbarData, NavActions, SortMode } from './types';
 import { OIcon } from './OIcon';
 
 const SORT_ICON: Record<string, string> = {
@@ -10,6 +10,13 @@ const SORT_LABEL: Record<string, string> = {
   sequence: 'Sequence order', alpha: 'A → Z', 'alpha-desc': 'Z → A',
   field: 'By field', mtime: 'Date modified', ctime: 'Date created',
 };
+
+const SORT_MENU_ITEMS: { mode: SortMode; label: string; icon: string }[] = [
+  { mode: 'mtime',      label: 'Date modified', icon: 'clock' },
+  { mode: 'alpha',      label: 'A → Z',         icon: 'arrow-up-a-z' },
+  { mode: 'alpha-desc', label: 'Z → A',          icon: 'arrow-down-z-a' },
+  { mode: 'ctime',      label: 'Date created',   icon: 'calendar' },
+];
 
 function ModeBtn({ icon, label, active, onClick }: {
   icon: string; label: string; active: boolean; onClick: () => void;
@@ -37,8 +44,49 @@ interface ToolbarProps { data: ToolbarData; actions: NavActions; isMobile?: bool
 export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
   const { mode, vis, previewExpanded, atActive, recentViewMode,
           browserViewMode, browserTitle, browserIsRoots, browserCanGoBack,
-          browserSortMode, browserSortCycle, followMode } = data;
+          browserSortMode, followMode, layoutMode, filterActive } = data;
   const isBrowser = mode === 'browser';
+
+  const openMenu = (e: MouseEvent) => {
+    const menu = new Menu();
+
+    // ── View ──────────────────────────────────────────────────────────────
+    menu.addItem((item) =>
+      item.setSection('view').setTitle('Grid — large').setIcon('layout-grid')
+        .setChecked(layoutMode === 'grid-large')
+        .onClick(() => actions.setLayoutMode('grid-large')));
+    menu.addItem((item) =>
+      item.setSection('view').setTitle('Grid — small').setIcon('grip')
+        .setChecked(layoutMode === 'grid-small')
+        .onClick(() => actions.setLayoutMode('grid-small')));
+    menu.addItem((item) =>
+      item.setSection('view').setTitle('List').setIcon('list')
+        .setChecked(layoutMode === 'list')
+        .onClick(() => actions.setLayoutMode('list')));
+    menu.addItem((item) =>
+      item.setSection('view').setTitle(previewExpanded ? 'Hide previews' : 'Show previews')
+        .setIcon(previewExpanded ? 'eye-off' : 'eye')
+        .setChecked(previewExpanded)
+        .onClick(() => actions.togglePreview()));
+
+    // ── Sort ──────────────────────────────────────────────────────────────
+    for (const { mode: m, label, icon } of SORT_MENU_ITEMS) {
+      menu.addItem((item) =>
+        item.setSection('sort').setTitle(label).setIcon(icon)
+          .setChecked(browserSortMode === m)
+          .onClick(() => actions.setBrowserSortMode(m)));
+    }
+
+    // ── Create ────────────────────────────────────────────────────────────
+    menu.addItem((item) =>
+      item.setSection('create').setTitle('New note').setIcon('file-plus')
+        .onClick(() => actions.createNote()));
+    menu.addItem((item) =>
+      item.setSection('create').setTitle('New child note').setIcon('file-plus-2')
+        .onClick(() => actions.createChildNote()));
+
+    menu.showAtMouseEvent(e);
+  };
 
   return (
     <div class="bread-trail-nav-toolbar">
@@ -76,14 +124,6 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
           onClick={actions.goToActive}
         />
       )}
-      {/* Preview toggle: desktop always, mobile only when not in browser mode to save space */}
-      {vis.preview && (!isMobile || !isBrowser) && (
-        <ActionBtn
-          icon={previewExpanded ? 'eye' : 'eye-off'}
-          label={previewExpanded ? 'Hide previews' : 'Show previews'}
-          onClick={actions.togglePreview}
-        />
-      )}
       <button
         class={`bread-trail-nav-action-btn${followMode ? ' is-active' : ''}`}
         aria-label={followMode ? 'Follow mode on' : 'Follow mode off'}
@@ -91,8 +131,18 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
       >
         <OIcon name="navigation" />
       </button>
+      <button
+        class={`bread-trail-nav-action-btn${filterActive ? ' is-active' : ''}`}
+        aria-label={filterActive ? 'Close filter' : 'Filter notes'}
+        onClick={actions.toggleFilter}
+      >
+        <OIcon name="search" />
+      </button>
+      <button class="bread-trail-nav-action-btn" aria-label="More options" onClick={openMenu}>
+        <OIcon name="more-horizontal" />
+      </button>
 
-      {/* Desktop only: browser nav (back + title + sort) goes LAST so it wraps
+      {/* Desktop only: browser nav (back + title) goes LAST so it wraps
           to its own full-width row below the mode group + action buttons.
           On mobile this lives in the content area as a sticky header instead. */}
       {!isMobile && isBrowser && (
@@ -104,13 +154,6 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
           <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
             {browserTitle}
           </span>
-          {browserViewMode === 'bc' && browserSortCycle.length > 1 && (
-            <button class="bread-trail-nav-sort-btn bread-trail-nav-browser-sort"
-              aria-label={SORT_LABEL[browserSortMode] ?? browserSortMode}
-              onClick={actions.browserCycleSort}>
-              <OIcon name={SORT_ICON[browserSortMode] ?? 'list-ordered'} />
-            </button>
-          )}
         </div>
       )}
     </div>

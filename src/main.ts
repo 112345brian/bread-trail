@@ -411,7 +411,7 @@ export default class BreadTrail extends Plugin {
 
   /** Open the tile explorer modal. Guards against duplicate spawns — if one is
    *  already open the call is a no-op. */
-  private openExplorerModal(): void {
+  private openExplorerModal(startFile?: TFile | null): void {
     if (this.activeExplorerModal) return;
     const bc = this.ensureBreadcrumbs();
     if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
@@ -419,20 +419,31 @@ export default class BreadTrail extends Plugin {
       this.app, bc,
       this.settings.graphLabelProperty,
       this.settings.explorerTileMinWidth,
+      this.settings.explorerStartMode,
+      this.settings.explorerHomeNote,
+      this.settings.navigatorHomeShowFavorites,
+      this.settings.navigatorHomeShowRecents,
+      this.settings.navigatorHomeRecentsCount,
+      this.settings.navigatorFavorites,
+      this.settings.navigatorFavoritesParentNote,
+      this.settings.explorerDoubleTapToOpen,
       () => { this.activeExplorerModal = null; },
+      startFile,
     );
     this.activeExplorerModal = modal;
     modal.open();
   }
 
-  /** On mobile: a two-finger spread (pinch-out) anywhere on screen opens the
-   *  tile explorer modal. Pinch-out is a natural "expand / bring forward" gesture
-   *  and doesn't conflict with any of Obsidian's built-in single-finger gestures. */
+  /** On mobile: two-finger gestures anywhere on screen navigate the tile explorer.
+   *  Spread (expand) = go deeper into the active note's children.
+   *  Pinch (contract) = go up to the active note's parent level.
+   *  Neither conflicts with Obsidian's built-in single-finger gestures. */
   private registerMobileTapZone() {
-    const MIN_SPREAD = 55;   // fingers must spread at least this many px to trigger
+    const MIN_GESTURE = 45;  // minimum px change to count as intentional
 
     let startDist = 0;
     let maxDist   = 0;
+    let minDist   = 0;
     let active    = false;
 
     const fingerDist = (touches: TouchList) => {
@@ -445,19 +456,51 @@ export default class BreadTrail extends Plugin {
       active    = true;
       startDist = fingerDist(e.touches);
       maxDist   = startDist;
+      minDist   = startDist;
     };
 
     const onMove = (e: TouchEvent) => {
       if (!active || e.touches.length !== 2) return;
       const d = fingerDist(e.touches);
       if (d > maxDist) maxDist = d;
+      if (d < minDist) minDist = d;
     };
 
     const onEnd = () => {
       if (!active) return;
       active = false;
-      if (maxDist - startDist >= MIN_SPREAD && this.settings.mobileTapExplorer) {
-        this.openExplorerModal();
+      if (!this.settings.mobileTapExplorer) return;
+
+      const spread = maxDist - startDist;  // positive = fingers moved apart
+      const pinch  = startDist - minDist;  // positive = fingers moved together
+
+      if (Math.max(spread, pinch) < MIN_GESTURE) return;
+
+      const action = spread >= pinch
+        ? this.settings.explorerGestureExpand
+        : this.settings.explorerGesturePinch;
+
+      if (action === 'off') return;
+
+      if (action === 'children') {
+        // Open at the active note itself — shows its children
+        this.openExplorerModal(this.app.workspace.getActiveFile());
+      } else {
+        // 'parent': open at the active note's BC parent — shows its siblings
+        const activeFile = this.app.workspace.getActiveFile();
+        const bc = this.ensureBreadcrumbs();
+        let parent: TFile | null = null;
+        if (activeFile && bc) {
+          for (const e of bc.graph.get_outgoing_edges(activeFile.path).to_array()) {
+            if (e.edge_type?.toLowerCase() !== 'up') continue;
+            const path = e.target_path?.(bc.graph) ?? e.target;
+            if (!path) continue;
+            const f = this.app.vault.getAbstractFileByPath(path);
+            if (f instanceof TFile) { parent = f; break; }
+          }
+        }
+        // If no BC parent found, fall back to configured start mode
+        this.openExplorerModal(parent ?? undefined);
       }
     };
 
@@ -537,17 +580,11 @@ export default class BreadTrail extends Plugin {
       return;
     }
 
-    if (this.settings.showStartupNotice) {
-      new Notice('BreadTrail: Breadcrumbs plugin not found.');
-    }
+    new Notice('BreadTrail: Breadcrumbs plugin not found.');
     new BreadcrumbsMissingModal(this.app).open();
   }
 
-  private handleBreadcrumbsReady(bc: BreadcrumbsPlugin, showNotice: boolean): void {
-    if (showNotice) {
-      new Notice('BreadTrail loaded — breadcrumbs detected.');
-    }
-
+  private handleBreadcrumbsReady(bc: BreadcrumbsPlugin, _showNotice: boolean): void {
     this.getNavigatorView()?.scheduleRefresh();
     this.updateAllHeaderBreadcrumbs();
 

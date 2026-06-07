@@ -60,11 +60,14 @@ export interface ToolbarData {
   /** Empty → hide sort button. */
   browserSortCycle: SortMode[];
   followMode: boolean;
+  layoutMode: 'list' | 'grid-small' | 'grid-large';
+  filterActive: boolean;
 }
 
 export interface NavData {
   toolbar: ToolbarData;
   mode: NavMode;
+  layoutMode: 'list' | 'grid-small' | 'grid-large';
   /** Context mode — structured sections with collapsible headers. */
   sections: SectionData[];
   /** Browser/Recent/Favorites — flat card list (no section header). */
@@ -74,6 +77,8 @@ export interface NavData {
   /** File-system browser — mixed folder rows + note cards. */
   browserItems?: BrowserItem[];
   emptyMessage?: string;
+  /** Current filter string — empty = no filter. */
+  filterQuery: string;
 }
 
 export interface NavActions {
@@ -93,8 +98,17 @@ export interface NavActions {
   toggleCollapse: (sectionId: string) => void;
   browserBack: () => void;
   browserCycleSort: () => void;
+  setBrowserSortMode: (mode: SortMode) => void;
   showContextMenu: (file: TFile, e: MouseEvent) => void;
   /** Navigate into a folder in the file-system browser. */
   navigateFolder: (path: string) => void;
   toggleFollowMode: () => void;
+  setLayoutMode: (mode: 'list' | 'grid-small' | 'grid-large') => void;
+  createNote: () => void;
+  /** Create a new note pre-linked as a child (up: [[active]]) of the current note. */
+  createChildNote: () => void;
+  /** Show/hide the filter bar. */
+  toggleFilter: () => void;
+  /** Update the filter query (triggers re-render with filtered cards). */
+  setFilter: (query: string) => void;
 }

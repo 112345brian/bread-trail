@@ -1,12 +1,13 @@
 {
 	"name": "bread-trail",
-	"version": "1.0.0",
+	"version": "1.2.0",
 	"description": "Navigate and edit your Breadcrumbs graph — view hierarchies, tile explorer, quick-switch between related notes, and more.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"reload": "node esbuild.config.mjs production && cp main.js '/Users/bri/MEGA/LIBRARY/OBSIDIAN/.obsidian/plugins/bread-trail/main.js' && /Applications/Obsidian.app/Contents/MacOS/obsidian-cli plugin:reload id=bread-trail",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},

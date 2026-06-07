@@ -1,6 +1,6 @@
-import { App, Modal, TFile, setIcon } from 'obsidian';
+import { App, Modal, Menu, TFile, setIcon } from 'obsidian';
 import { render, h } from 'preact';
-import { useState, useCallback, useRef } from 'preact/hooks';
+import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
 import type { BreadcrumbsPlugin } from './main';
 
 // ── BC graph helpers (self-contained so we don't depend on NavigatorView) ─────
@@ -46,14 +46,63 @@ function getVaultRoots(bc: BreadcrumbsPlugin, app: App): TFile[] {
   return roots.sort((a, b) => a.basename.localeCompare(b.basename));
 }
 
-function getLabel(file: TFile, labelProp: string): string {
+function getLabel(file: TFile, labelProp: string, app: App): string {
   if (!labelProp) return file.basename;
-  const fm = (file as unknown as { cache?: { frontmatter?: Record<string, unknown> } }).cache?.frontmatter;
+  const fm = app.metadataCache.getFileCache(file)?.frontmatter;
   const val: unknown = fm?.[labelProp];
   if (Array.isArray(val) && val.length > 0) return String(val[0]);
   if (typeof val === 'string' && val.trim()) return val.trim();
   return file.basename;
 }
+
+function isFavorite(
+  file: TFile,
+  app: App,
+  bc: BreadcrumbsPlugin,
+  pinnedPaths: Set<string>,
+  parentNotePath: string,
+): boolean {
+  if (pinnedPaths.has(file.path)) return true;
+  const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+  const btFm = fm?.['bread-trail'];
+  if (typeof btFm === 'object' && btFm !== null && (btFm as Record<string, unknown>)['favorite'] === true) return true;
+  if (!parentNotePath) return false;
+  for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
+    if (e.edge_type?.toLowerCase() !== 'up') continue;
+    const p = e.target_path?.(bc.graph) ?? e.target;
+    if (p === parentNotePath) return true;
+  }
+  for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
+    if (e.edge_type?.toLowerCase() !== 'down') continue;
+    const p = e.source_path?.(bc.graph) ?? e.source;
+    if (p === parentNotePath) return true;
+  }
+  return false;
+}
+
+function getFavorites(
+  app: App, bc: BreadcrumbsPlugin, pinnedPaths: string[], parentNotePath: string,
+): TFile[] {
+  const pinned = new Set(pinnedPaths);
+  return app.vault.getMarkdownFiles()
+    .filter((f) => isFavorite(f, app, bc, pinned, parentNotePath))
+    .sort((a, b) => {
+      const ai = pinnedPaths.indexOf(a.path);
+      const bi = pinnedPaths.indexOf(b.path);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.basename.localeCompare(b.basename);
+    });
+}
+
+function getRecents(app: App, count: number): TFile[] {
+  return app.vault.getMarkdownFiles()
+    .sort((a, b) => b.stat.mtime - a.stat.mtime)
+    .slice(0, count);
+}
+
+type ExplorerSortMode = 'alpha' | 'alpha-desc' | 'date-modified' | 'date-created';
 
 // ── Tile component ────────────────────────────────────────────────────────────
 
@@ -65,27 +114,57 @@ interface TileProps {
   onTap: () => void;
   /** Folder tiles only: long-press (500 ms hold) opens the note itself. */
   onLongPress?: () => void;
+  /** When true, double-tap opens the note directly instead of requiring a long-press. */
+  doubleTapToOpen?: boolean;
 }
 
-function Tile({ file, isFolder, isActive, label, onTap, onLongPress }: TileProps) {
-  const timerRef = useRef<number | null>(null);
-  const didFire  = useRef(false);
+function Tile({ file, isFolder, isActive, label, onTap, onLongPress, doubleTapToOpen }: TileProps) {
+  const longPressTimer = useRef<number | null>(null);
+  const singleTapTimer = useRef<number | null>(null);
+  const didLongPress   = useRef(false);
+  const lastTapAt      = useRef<number>(0);
 
-  const cancelTimer = () => {
-    if (timerRef.current !== null) { window.clearTimeout(timerRef.current); timerRef.current = null; }
+  const cancelLongPress = () => {
+    if (longPressTimer.current !== null) { window.clearTimeout(longPressTimer.current); longPressTimer.current = null; }
   };
 
   const handleTouchStart = () => {
     if (!onLongPress) return;
-    didFire.current = false;
-    timerRef.current = window.setTimeout(() => {
-      didFire.current = true;
+    didLongPress.current = false;
+    longPressTimer.current = window.setTimeout(() => {
+      didLongPress.current = true;
       onLongPress();
     }, 500);
   };
 
   const handleClick = () => {
-    if (didFire.current) return; // long-press already handled — suppress click
+    if (didLongPress.current) return; // long-press already handled — suppress click
+
+    // Double-tap mode: folder tiles use double-tap to open, single-tap to drill in.
+    // Non-folder tiles always open immediately.
+    if (doubleTapToOpen && onLongPress) {
+      const now = Date.now();
+      const gap = now - lastTapAt.current;
+      lastTapAt.current = now;
+
+      if (gap < 300) {
+        // Second tap within window → open the note directly
+        if (singleTapTimer.current !== null) {
+          window.clearTimeout(singleTapTimer.current);
+          singleTapTimer.current = null;
+        }
+        onLongPress();
+      } else {
+        // First tap — wait to see if a second follows before drilling in
+        if (singleTapTimer.current !== null) window.clearTimeout(singleTapTimer.current);
+        singleTapTimer.current = window.setTimeout(() => {
+          singleTapTimer.current = null;
+          onTap();
+        }, 300);
+      }
+      return;
+    }
+
     onTap();
   };
 
@@ -94,8 +173,8 @@ function Tile({ file, isFolder, isActive, label, onTap, onLongPress }: TileProps
       class={`bt-explorer-tile${isFolder ? ' is-folder' : ''}${isActive ? ' is-active' : ''}`}
       onClick={handleClick}
       onTouchStart={handleTouchStart}
-      onTouchEnd={cancelTimer}
-      onTouchMove={cancelTimer}
+      onTouchEnd={cancelLongPress}
+      onTouchMove={cancelLongPress}
       title={file.basename}
     >
       <div class="bt-explorer-tile-icon">
@@ -104,10 +183,6 @@ function Tile({ file, isFolder, isActive, label, onTap, onLongPress }: TileProps
         }} />
       </div>
       <span class="bt-explorer-tile-label">{label}</span>
-      {/* Subtle hint so users know folder notes can be opened */}
-      {isFolder && onLongPress && (
-        <span class="bt-explorer-tile-open-hint">hold to open</span>
-      )}
     </button>
   );
 }
@@ -120,12 +195,64 @@ interface GridProps {
   labelProp: string;
   activeFile: TFile | null;
   tileMinWidth: number;
+  startMode: 'active-parent' | 'home' | 'roots';
+  homeNote: string;
+  showFavorites: boolean;
+  showRecents: boolean;
+  recentsCount: number;
+  favoritePaths: string[];
+  favoritesParentNote: string;
   onOpen: (file: TFile) => void;
+  onTitleChange?: (title: string) => void;
+  doubleTapToOpen: boolean;
+  /** When provided, overrides startMode — the stack starts at this file (null = vault roots). */
+  startFile?: TFile | null;
 }
 
-function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, onOpen }: GridProps) {
+function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, startMode, homeNote, showFavorites, showRecents, recentsCount, favoritePaths, favoritesParentNote, onOpen, onTitleChange, doubleTapToOpen, startFile }: GridProps) {
+  const [localTileWidth, setLocalTileWidth] = useState(tileMinWidth);
+  const [sortMode, setSortMode] = useState<ExplorerSortMode>('alpha');
+
+  const openMenu = useCallback((e: MouseEvent) => {
+    const menu = new Menu();
+    const sizes = [
+      { label: 'Large', width: 130, icon: 'layout-grid' },
+      { label: 'Medium', width: 100, icon: 'grip' },
+      { label: 'Small', width: 72, icon: 'table-2' },
+    ] as const;
+    for (const { label, width, icon } of sizes) {
+      menu.addItem((item) => item.setSection('view').setTitle(label).setIcon(icon)
+        .setChecked(localTileWidth === width).onClick(() => setLocalTileWidth(width)));
+    }
+    const sorts = [
+      { mode: 'alpha' as const, label: 'A → Z', icon: 'arrow-up-a-z' },
+      { mode: 'alpha-desc' as const, label: 'Z → A', icon: 'arrow-down-a-z' },
+      { mode: 'date-modified' as const, label: 'Date modified', icon: 'clock' },
+      { mode: 'date-created' as const, label: 'Date created', icon: 'calendar-plus' },
+    ];
+    for (const { mode, label, icon } of sorts) {
+      menu.addItem((item) => item.setSection('sort').setTitle(label).setIcon(icon)
+        .setChecked(sortMode === mode).onClick(() => setSortMode(mode)));
+    }
+    menu.showAtMouseEvent(e);
+  }, [localTileWidth, sortMode]);
+
   const [stack, setStack] = useState<TFile[]>(() => {
-    // Start at active file's parent, or vault roots
+    // Gesture override: a specific file was requested directly
+    if (startFile !== undefined) return startFile ? [startFile] : [];
+
+    if (startMode === 'roots') return [];
+
+    if (startMode === 'home' && homeNote) {
+      const f = app.vault.getAbstractFileByPath(homeNote) ??
+                app.vault.getAbstractFileByPath(homeNote + '.md');
+      if (f instanceof TFile) return [f];
+      // fallback: try basename match
+      const match = app.vault.getMarkdownFiles().find((x) => x.basename === homeNote || x.path === homeNote);
+      if (match) return [match];
+    }
+
+    // 'active-parent' (default): start at the parent of the active note
     if (activeFile) {
       for (const e of bc.graph.get_outgoing_edges(activeFile.path).to_array()) {
         if (e.edge_type?.toLowerCase() !== 'up') continue;
@@ -139,7 +266,21 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, onOpen }: 
   });
 
   const current = stack[stack.length - 1] ?? null;
-  const items: TFile[] = current ? getChildren(current, bc, app) : getVaultRoots(bc, app);
+  const rawItems: TFile[] = current ? getChildren(current, bc, app) : getVaultRoots(bc, app);
+  const items = [...rawItems].sort((a, b) => {
+    switch (sortMode) {
+      case 'alpha-desc':    return b.basename.localeCompare(a.basename);
+      case 'date-modified': return b.stat.mtime - a.stat.mtime;
+      case 'date-created':  return b.stat.ctime - a.stat.ctime;
+      default:              return a.basename.localeCompare(b.basename);
+    }
+  });
+
+  // Keep the modal title in sync with the current navigation level
+  useEffect(() => {
+    const title = current ? getLabel(current, labelProp, app) : app.vault.getName();
+    onTitleChange?.(title);
+  }, [current, labelProp, onTitleChange]);
 
   const drillIn = useCallback((file: TFile) => {
     setStack((s) => [...s, file]);
@@ -173,34 +314,41 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, onOpen }: 
       onTouchStart={onSwipeTouchStart}
       onTouchEnd={onSwipeTouchEnd}
     >
-      {/* Breadcrumb path — back button lives here so it's at the top on mobile,
-          safely away from Android's bottom system-navigation zone */}
-      <div class="bt-explorer-crumbs">
-        {stack.length > 0 && (
-          <button class="bt-explorer-crumb-btn bt-explorer-crumb-back" onClick={goBack}
-            aria-label="Back">
-            <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
-          </button>
-        )}
-        <button class="bt-explorer-crumb-btn" onClick={() => setStack([])} aria-label="Home">
-          <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'home'); }} />
-        </button>
-        {stack.map((f, i) => (
-          <>
-            <span class="bt-explorer-crumb-sep">›</span>
-            <button key={f.path} class="bt-explorer-crumb-btn" onClick={() => goToIndex(i)}>
-              {getLabel(f, labelProp)}
+      {/* Toolbar: breadcrumbs (left) + menu button (right) */}
+      <div class="bt-explorer-toolbar">
+        <div class="bt-explorer-crumbs">
+          {stack.length > 0 && (
+            <button class="bt-explorer-crumb-btn bt-explorer-crumb-back" onClick={goBack}
+              aria-label="Back">
+              <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
             </button>
-          </>
-        ))}
+          )}
+          <button class="bt-explorer-crumb-btn" onClick={() => setStack([])} aria-label="Home">
+            <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'home'); }} />
+          </button>
+          {stack.map((f, i) => (
+            <>
+              <span class="bt-explorer-crumb-sep">›</span>
+              <button key={f.path} class="bt-explorer-crumb-btn" onClick={() => goToIndex(i)}>
+                {getLabel(f, labelProp, app)}
+              </button>
+            </>
+          ))}
+        </div>
+        <button class="bt-explorer-crumb-btn bt-explorer-crumb-menu"
+          onClick={openMenu} aria-label="Options">
+          <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'more-horizontal'); }} />
+        </button>
       </div>
 
-      {/* Tile grid */}
+      {/* Scrollable content area: main grid + home sections */}
+      <div class="bt-explorer-scroll-area">
+      {/* Main tile grid */}
       {items.length === 0 ? (
         <p class="bt-explorer-empty">Nothing here.</p>
       ) : (
         <div class="bt-explorer-grid"
-          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${tileMinWidth}px, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${localTileWidth}px, 1fr))` }}
         >
           {items.map((file) => {
             const isFolder = hasChildren(file, bc);
@@ -210,14 +358,80 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, onOpen }: 
                 file={file}
                 isFolder={isFolder}
                 isActive={file.path === activeFile?.path}
-                label={getLabel(file, labelProp)}
+                label={getLabel(file, labelProp, app)}
                 onTap={() => isFolder ? drillIn(file) : onOpen(file)}
                 onLongPress={isFolder ? () => onOpen(file) : undefined}
+                doubleTapToOpen={doubleTapToOpen}
               />
             );
           })}
         </div>
       )}
+
+      {/* Home-level extras: Favorites + Recents (only when at the top level) */}
+      {/* Home-level extras: Favorites + Recents */}
+      {current === null && (() => {
+        const favFiles = showFavorites ? getFavorites(app, bc, favoritePaths, favoritesParentNote) : [];
+        const recentFiles = showRecents ? getRecents(app, recentsCount) : [];
+        if (favFiles.length === 0 && recentFiles.length === 0) return null;
+        return (
+          <>
+            {favFiles.length > 0 && (
+              <div class="bt-explorer-home-section">
+                <div class="bt-explorer-section-header">
+                  <span class="bt-explorer-section-icon"
+                    ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'star'); }} />
+                  <span>Favorites</span>
+                </div>
+                <div class="bt-explorer-grid"
+                  style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${localTileWidth}px, 1fr))` }}
+                >
+                  {favFiles.map((file) => {
+                    const isFolder = hasChildren(file, bc);
+                    return (
+                      <Tile
+                        key={file.path}
+                        file={file}
+                        isFolder={isFolder}
+                        isActive={file.path === activeFile?.path}
+                        label={getLabel(file, labelProp, app)}
+                        onTap={() => isFolder ? drillIn(file) : onOpen(file)}
+                        onLongPress={isFolder ? () => onOpen(file) : undefined}
+                doubleTapToOpen={doubleTapToOpen}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {recentFiles.length > 0 && (
+              <div class="bt-explorer-home-section">
+                <div class="bt-explorer-section-header">
+                  <span class="bt-explorer-section-icon"
+                    ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'clock'); }} />
+                  <span>Recent</span>
+                </div>
+                <div class="bt-explorer-grid"
+                  style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${localTileWidth}px, 1fr))` }}
+                >
+                  {recentFiles.map((file) => (
+                    <Tile
+                      key={file.path}
+                      file={file}
+                      isFolder={false}
+                      isActive={file.path === activeFile?.path}
+                      label={getLabel(file, labelProp, app)}
+                      onTap={() => onOpen(file)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
+      </div>{/* end bt-explorer-scroll-area */}
     </div>
   );
 }
@@ -228,14 +442,47 @@ export class ExplorerModal extends Modal {
   private bc: BreadcrumbsPlugin;
   private labelProp: string;
   private tileMinWidth: number;
+  private startMode: 'active-parent' | 'home' | 'roots';
+  private homeNote: string;
+  private showFavorites: boolean;
+  private showRecents: boolean;
+  private recentsCount: number;
+  private favoritePaths: string[];
+  private favoritesParentNote: string;
+  private doubleTapToOpen: boolean;
+  private startFile?: TFile | null;
   private onClosed?: () => void;
 
-  constructor(app: App, bc: BreadcrumbsPlugin, labelProp: string, tileMinWidth: number, onClosed?: () => void) {
+  constructor(
+    app: App,
+    bc: BreadcrumbsPlugin,
+    labelProp: string,
+    tileMinWidth: number,
+    startMode: 'active-parent' | 'home' | 'roots',
+    homeNote: string,
+    showFavorites: boolean,
+    showRecents: boolean,
+    recentsCount: number,
+    favoritePaths: string[],
+    favoritesParentNote: string,
+    doubleTapToOpen: boolean,
+    onClosed?: () => void,
+    startFile?: TFile | null,
+  ) {
     super(app);
     this.bc = bc;
     this.labelProp = labelProp;
     this.tileMinWidth = tileMinWidth;
+    this.startMode = startMode;
+    this.homeNote = homeNote;
+    this.showFavorites = showFavorites;
+    this.showRecents = showRecents;
+    this.recentsCount = recentsCount;
+    this.favoritePaths = favoritePaths;
+    this.favoritesParentNote = favoritesParentNote;
+    this.doubleTapToOpen = doubleTapToOpen;
     this.onClosed = onClosed;
+    this.startFile = startFile;
     this.modalEl.addClass('bt-explorer-modal');
   }
 
@@ -255,6 +502,16 @@ export class ExplorerModal extends Modal {
           void leaf.openFile(file);
           this.close();
         },
+        startMode: this.startMode,
+        homeNote: this.homeNote,
+        showFavorites: this.showFavorites,
+        showRecents: this.showRecents,
+        recentsCount: this.recentsCount,
+        favoritePaths: this.favoritePaths,
+        favoritesParentNote: this.favoritesParentNote,
+        doubleTapToOpen: this.doubleTapToOpen,
+        startFile: this.startFile,
+        onTitleChange: (title: string) => this.setTitle(title),
       }),
       contentEl,
     );

@@ -1,7 +1,23 @@
-import { App, Platform, PluginSettingTab, Setting } from 'obsidian';
+import { App, Platform, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import type BreadTrail from './main';
 
 export type ValidationSeverity = 'error' | 'warning' | 'off';
+
+export type PinboardSectionType = 'favorites' | 'current' | 'recents' | 'roots' | 'tag' | 'filter';
+
+/** What a two-finger gesture does in the tile explorer. */
+export type ExplorerGestureAction = 'off' | 'parent' | 'children';
+
+export interface PinboardSection {
+  type: PinboardSectionType;
+  enabled: boolean;
+  /** Override the section header label. Empty string = use default. */
+  label: string;
+  /** Max items shown. 0 = use global default. Only meaningful for 'recents'/'tag'/'filter'. */
+  limit: number;
+  /** Tag name (for 'tag') or "key:value" / "key" pattern (for 'filter'). Unused for other types. */
+  param: string;
+}
 
 export interface ValidationRules {
   /** When a note has 2+ edges of the same type (e.g. two `next`), all must
@@ -86,6 +102,13 @@ export interface BreadTrailSettings {
   mobileNavigatorSide: 'left' | 'right';
   /** On mobile: pinch-out (two-finger spread) anywhere to open the tile explorer. */
   mobileTapExplorer: boolean;
+  /** What the pinch-in (contract) gesture does. */
+  explorerGesturePinch: ExplorerGestureAction;
+  /** What the spread-out (expand) gesture does. */
+  explorerGestureExpand: ExplorerGestureAction;
+  /** In the tile explorer, double-tap a folder tile to open its note directly.
+   *  When off, a long-press (500 ms) is required instead. */
+  explorerDoubleTapToOpen: boolean;
   /** Replace the file-path breadcrumb in note headers with BC ancestor links. */
   headerBreadcrumbs: boolean;
   /** How many ancestor levels to show (0 = all). */
@@ -94,13 +117,28 @@ export interface BreadTrailSettings {
   navigatorFavorites: string[];
   /** Frontmatter properties shown in Favorites view cards. */
   navigatorFavoritesMetaProperties: string[];
+  /** File path of a note whose BC children (up: [[this]]) are treated as favorites.
+   *  Leave blank to disable. Works alongside bread-trail.favorite: true and pinned paths. */
+  navigatorFavoritesParentNote: string;
+  /** Show a Favorites section on the home (roots) view in browser mode. */
+  navigatorHomeShowFavorites: boolean;
+  /** Show a Recent section on the home (roots) view in browser mode. */
+  navigatorHomeShowRecents: boolean;
+  /** Max recent notes shown in the home view Recent section. */
+  navigatorHomeRecentsCount: number;
   /** When on, notes whose first 3 body lines contain a transcluded Base (![[*.base]])
    *  or an inline base/dataview block are shown without a preview excerpt. */
   navigatorSkipPreviewForBases: boolean;
   /** Number of content lines shown in the card preview (default 3). */
   navigatorPreviewLines: number;
+  /** Display layout for note lists: list, 2-column grid, or compact 3-column grid. */
+  navigatorLayoutMode: 'list' | 'grid-small' | 'grid-large';
   /** Minimum tile width (px) in the tile explorer grid. Smaller = more columns. */
   explorerTileMinWidth: number;
+  /** Where the tile explorer opens: active note's parent, a fixed home note, or vault roots. */
+  explorerStartMode: 'active-parent' | 'home' | 'roots';
+  /** File path of the home note when explorerStartMode is 'home'. */
+  explorerHomeNote: string;
   /** Folder paths whose contents are hidden from the navigator (prefix match). */
   navigatorExcludeFolders: string[];
   /** Exact file paths to hide from the navigator. */
@@ -108,6 +146,10 @@ export interface BreadTrailSettings {
   /** Frontmatter patterns that hide a note from the navigator.
    *  Format: "key" (any truthy value) or "key:value" (exact match). */
   navigatorExcludeFrontmatter: string[];
+  /** Ordered list of sections shown in the Pinboard (Favorites) sidebar panel. */
+  navigatorPinboardSections: PinboardSection[];
+  /** Show a Siblings section in Context mode (notes sharing the same parent). */
+  navigatorShowSiblings: boolean;
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth';
@@ -167,16 +209,33 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   floatingNavRight: false,
   mobileNavigatorSide: 'left',
   mobileTapExplorer: true,
+  explorerGesturePinch: 'parent',
+  explorerGestureExpand: 'children',
+  explorerDoubleTapToOpen: false,
   headerBreadcrumbs: false,
   headerBreadcrumbsDepth: 0,
   navigatorFavorites: [],
   navigatorFavoritesMetaProperties: [],
+  navigatorFavoritesParentNote: '',
+  navigatorHomeShowFavorites: true,
+  navigatorHomeShowRecents: true,
+  navigatorHomeRecentsCount: 10,
   navigatorSkipPreviewForBases: true,
   navigatorPreviewLines: 3,
+  navigatorLayoutMode: 'grid-large',
   explorerTileMinWidth: 90,
+  explorerStartMode: 'active-parent',
+  explorerHomeNote: '',
   navigatorExcludeFolders: [],
   navigatorExcludeFiles: [],
   navigatorExcludeFrontmatter: [],
+  navigatorPinboardSections: [
+    { type: 'favorites', enabled: true,  label: '', limit: 0,  param: '' },
+    { type: 'current',   enabled: true,  label: '', limit: 0,  param: '' },
+    { type: 'recents',   enabled: true,  label: '', limit: 10, param: '' },
+    { type: 'roots',     enabled: false, label: '', limit: 0,  param: '' },
+  ],
+  navigatorShowSiblings: false,
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -272,6 +331,9 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     floatingNavRight: typeof settings.floatingNavRight === 'boolean' ? settings.floatingNavRight : false,
     mobileNavigatorSide: settings.mobileNavigatorSide === 'right' ? 'right' : 'left',
     mobileTapExplorer: typeof settings.mobileTapExplorer === 'boolean' ? settings.mobileTapExplorer : true,
+    explorerGesturePinch: (['off', 'parent', 'children'] as ExplorerGestureAction[]).includes(settings.explorerGesturePinch as ExplorerGestureAction) ? settings.explorerGesturePinch as ExplorerGestureAction : 'parent',
+    explorerGestureExpand: (['off', 'parent', 'children'] as ExplorerGestureAction[]).includes(settings.explorerGestureExpand as ExplorerGestureAction) ? settings.explorerGestureExpand as ExplorerGestureAction : 'children',
+    explorerDoubleTapToOpen: typeof settings.explorerDoubleTapToOpen === 'boolean' ? settings.explorerDoubleTapToOpen : false,
     headerBreadcrumbs: typeof settings.headerBreadcrumbs === 'boolean' ? settings.headerBreadcrumbs : false,
     headerBreadcrumbsDepth: typeof settings.headerBreadcrumbsDepth === 'number' ? settings.headerBreadcrumbsDepth : 0,
     navigatorFavorites: Array.isArray(settings.navigatorFavorites)
@@ -280,9 +342,16 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     navigatorFavoritesMetaProperties: Array.isArray(settings.navigatorFavoritesMetaProperties)
       ? (settings.navigatorFavoritesMetaProperties as unknown[]).filter((p): p is string => typeof p === 'string')
       : [],
+    navigatorFavoritesParentNote: typeof settings.navigatorFavoritesParentNote === 'string' ? settings.navigatorFavoritesParentNote.trim() : '',
+    navigatorHomeShowFavorites: typeof settings.navigatorHomeShowFavorites === 'boolean' ? settings.navigatorHomeShowFavorites : true,
+    navigatorHomeShowRecents: typeof settings.navigatorHomeShowRecents === 'boolean' ? settings.navigatorHomeShowRecents : true,
+    navigatorHomeRecentsCount: typeof settings.navigatorHomeRecentsCount === 'number' && settings.navigatorHomeRecentsCount > 0 ? Math.floor(settings.navigatorHomeRecentsCount) : 10,
     navigatorSkipPreviewForBases: typeof settings.navigatorSkipPreviewForBases === 'boolean' ? settings.navigatorSkipPreviewForBases : true,
     navigatorPreviewLines: typeof settings.navigatorPreviewLines === 'number' && settings.navigatorPreviewLines > 0 ? Math.floor(settings.navigatorPreviewLines) : 3,
+    navigatorLayoutMode: (settings.navigatorLayoutMode === 'list' ? 'list' : settings.navigatorLayoutMode === 'grid-small' ? 'grid-small' : 'grid-large'),
     explorerTileMinWidth: typeof settings.explorerTileMinWidth === 'number' && settings.explorerTileMinWidth >= 60 ? Math.floor(settings.explorerTileMinWidth) : 90,
+    explorerStartMode: ['active-parent', 'home', 'roots'].includes(settings.explorerStartMode as string) ? settings.explorerStartMode as 'active-parent' | 'home' | 'roots' : 'active-parent',
+    explorerHomeNote: typeof settings.explorerHomeNote === 'string' ? settings.explorerHomeNote : '',
     navigatorExcludeFolders: Array.isArray(settings.navigatorExcludeFolders)
       ? (settings.navigatorExcludeFolders as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((s) => s.trim())
       : [],
@@ -292,6 +361,45 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     navigatorExcludeFrontmatter: Array.isArray(settings.navigatorExcludeFrontmatter)
       ? (settings.navigatorExcludeFrontmatter as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((s) => s.trim())
       : [],
+    navigatorPinboardSections: (() => {
+      const fixedTypes: PinboardSectionType[] = ['favorites', 'current', 'recents', 'roots'];
+      const allValidTypes: PinboardSectionType[] = [...fixedTypes, 'tag', 'filter'];
+      const raw = settings.navigatorPinboardSections;
+      if (Array.isArray(raw) && raw.length > 0) {
+        const seenFixed = new Set<PinboardSectionType>();
+        const result: PinboardSection[] = [];
+        for (const item of raw as unknown[]) {
+          if (!item || typeof item !== 'object') continue;
+          const s = item as Record<string, unknown>;
+          const type = s['type'] as PinboardSectionType;
+          if (!allValidTypes.includes(type)) continue;
+          // Fixed types: deduplicate; tag/filter: allow multiples (deduplicate by param)
+          if (fixedTypes.includes(type)) {
+            if (seenFixed.has(type)) continue;
+            seenFixed.add(type);
+          }
+          const param = typeof s['param'] === 'string' ? s['param'].trim() : '';
+          result.push({
+            type,
+            enabled: typeof s['enabled'] === 'boolean' ? s['enabled'] : true,
+            label:   typeof s['label']   === 'string'  ? s['label']   : '',
+            limit:   typeof s['limit']   === 'number' && (s['limit'] as number) >= 0
+              ? Math.floor(s['limit'] as number) : 0,
+            param,
+          });
+        }
+        // Append any missing fixed types at the end (disabled)
+        for (const type of fixedTypes) {
+          if (!seenFixed.has(type)) {
+            const def = DEFAULT_SETTINGS.navigatorPinboardSections.find((s) => s.type === type);
+            result.push(def ?? { type, enabled: false, label: '', limit: 0, param: '' });
+          }
+        }
+        return result;
+      }
+      return DEFAULT_SETTINGS.navigatorPinboardSections.map((s) => ({ ...s }));
+    })(),
+    navigatorShowSiblings: typeof settings.navigatorShowSiblings === 'boolean' ? settings.navigatorShowSiblings : false,
   };
 }
 
@@ -307,6 +415,7 @@ const TABS: { id: TabId; label: string }[] = [
 
 class BreadTrailSettingTab extends PluginSettingTab {
   private activeTab: TabId = 'general';
+  private advancedMode = false;
 
   constructor(app: App, private plugin: BreadTrail) {
     super(app, plugin);
@@ -343,16 +452,6 @@ class BreadTrailSettingTab extends PluginSettingTab {
   // ── General ───────────────────────────────────────────────────────────────
 
   private renderGeneral(el: HTMLElement) {
-    new Setting(el).setName('Startup').setHeading();
-
-    new Setting(el)
-      .setName('Show startup notice')
-      .setDesc('Show a notice when Obsidian loads confirming that breadcrumbs was detected.')
-      .addToggle((t) => {
-        t.setValue(this.plugin.settings.showStartupNotice);
-        t.onChange(async (v) => { this.plugin.settings.showStartupNotice = v; await this.save(); });
-      });
-
     new Setting(el).setName('Quick switcher').setHeading();
     this.depthSetting(el, 'Parent depth', 'Maximum parent levels to traverse.', 'parentDepth');
     this.depthSetting(el, 'Child depth',  'Maximum child levels to traverse.',  'childDepth');
@@ -434,13 +533,23 @@ class BreadTrailSettingTab extends PluginSettingTab {
   // ── Navigator ─────────────────────────────────────────────────────────────
 
   private renderNavigator(el: HTMLElement) {
+    // ── Advanced toggle ───────────────────────────────────────────────────
+    new Setting(el)
+      .setName('Advanced settings')
+      .setDesc('Show granular options for power users.')
+      .addToggle((t) => {
+        t.setValue(this.advancedMode);
+        t.onChange((v) => { this.advancedMode = v; this.display(); });
+      });
+
+    // ── Cards ─────────────────────────────────────────────────────────────
     new Setting(el).setName('Cards').setHeading();
 
     new Setting(el)
       .setName('Metadata properties')
-      .setDesc('Frontmatter keys to display below each card title, one per line. Iso date values are formatted automatically (e.g. 2026-01-05 → jan 5, 2026).')
+      .setDesc('Frontmatter keys to display below each card title, one per line. ISO date values are formatted automatically (e.g. 2026-01-05 → Jan 5, 2026).')
       .addTextArea((t) => {
-        t.setPlaceholder('Date\nstatus\ntags');
+        t.setPlaceholder('Date\nStatus\nTags');
         t.setValue(this.plugin.settings.navigatorMetaProperties.join('\n'));
         t.inputEl.rows = 4;
         t.onChange(async (v) => {
@@ -450,71 +559,110 @@ class BreadTrailSettingTab extends PluginSettingTab {
       });
 
     new Setting(el)
-      .setName('Sort-by-field property')
-      .setDesc('Frontmatter key to sort by when the "by field" sort mode is active.')
-      .addText((t) => {
-        t.setPlaceholder('Date-created');
-        t.setValue(this.plugin.settings.navigatorSortField);
-        t.onChange(async (v) => { this.plugin.settings.navigatorSortField = v.trim(); await this.save(); });
-      });
-
-    new Setting(el)
-      .setName('Skip preview for Base notes')
-      .setDesc('When on, notes whose first 3 lines contain a transcluded Base (![[*.base]]) or an inline ```base block are shown without a preview excerpt. Avoids useless raw block previews.')
-      .addToggle((t) => {
-        t.setValue(this.plugin.settings.navigatorSkipPreviewForBases);
-        t.onChange(async (v) => { this.plugin.settings.navigatorSkipPreviewForBases = v; await this.save(); });
-      });
-
-    new Setting(el)
-      .setName('Preview lines')
-      .setDesc('Number of content lines shown in card previews.')
-      .addSlider((s) => {
-        s.setLimits(1, 20, 1);
-        s.setValue(this.plugin.settings.navigatorPreviewLines);
-        s.setDynamicTooltip();
-        s.onChange(async (v) => {
-          this.plugin.settings.navigatorPreviewLines = v;
-          // Clear snippet cache so the new line count takes effect immediately
-          this.plugin.getNavigatorView()?.clearSnippetCache();
+      .setName('Note layout')
+      .setDesc('How notes are displayed in the navigator.')
+      .addDropdown((d) => {
+        d.addOption('grid-large', 'Grid — large (2 columns)');
+        d.addOption('grid-small', 'Grid — small (3 columns)');
+        d.addOption('list', 'List');
+        d.setValue(this.plugin.settings.navigatorLayoutMode);
+        d.onChange(async (v: string) => {
+          this.plugin.settings.navigatorLayoutMode = v as 'list' | 'grid-small' | 'grid-large';
           await this.save();
         });
       });
 
-    new Setting(el).setName('Tile explorer').setHeading();
-
     new Setting(el)
-      .setName('Tile minimum width')
-      .setDesc('Minimum width of each tile in the explorer grid (px). Smaller values fit more tiles per row.')
-      .addSlider((s) => {
-        s.setLimits(60, 160, 10);
-        s.setValue(this.plugin.settings.explorerTileMinWidth);
-        s.setDynamicTooltip();
-        s.onChange(async (v) => { this.plugin.settings.explorerTileMinWidth = v; await this.save(); });
+      .setName('Show siblings in Context mode')
+      .setDesc('Adds a Siblings section showing other notes that share the same parent as the active note.')
+      .addToggle((t) => {
+        t.setValue(this.plugin.settings.navigatorShowSiblings);
+        t.onChange(async (v) => { this.plugin.settings.navigatorShowSiblings = v; await this.save(); });
       });
 
-    new Setting(el).setName('Toolbar buttons').setHeading();
-
-    const toolbarDefs: { key: keyof BreadTrailSettings['navigatorToolbarVisible']; name: string; desc: string }[] = [
-      { key: 'context',    name: 'Context mode',       desc: 'Show the Context button (breadcrumb hierarchy view).' },
-      { key: 'browse',     name: 'Browse mode',         desc: 'Show the Browse button (folder drill-down view).' },
-      { key: 'recent',     name: 'Recent mode',         desc: 'Show the Recent button (recently modified notes).' },
-      { key: 'favorites',  name: 'Favorites mode',      desc: 'Show the Favorites button (starred and pinned notes).' },
-      { key: 'preview',    name: 'Preview toggle',      desc: 'Show the eye button that hides/shows card previews.' },
-      { key: 'reset',      name: 'Reset browser',       desc: 'Show the button that resets the browse view to its configured start.' },
-      { key: 'goToActive', name: 'Go to active note',   desc: 'Show the button that jumps the browse view to the currently open note.' },
-    ];
-
-    for (const { key, name, desc } of toolbarDefs) {
+    if (this.advancedMode) {
       new Setting(el)
-        .setName(name)
-        .setDesc(desc)
+        .setName('Sort-by-field property')
+        .setDesc('Frontmatter key to sort by when the "by field" sort mode is active.')
+        .addText((t) => {
+          t.setPlaceholder('Date-created');
+          t.setValue(this.plugin.settings.navigatorSortField);
+          t.onChange(async (v) => { this.plugin.settings.navigatorSortField = v.trim(); await this.save(); });
+        });
+
+      new Setting(el)
+        .setName('Preview lines')
+        .setDesc('Number of content lines shown in card previews.')
+        .addSlider((s) => {
+          s.setLimits(1, 20, 1);
+          s.setValue(this.plugin.settings.navigatorPreviewLines);
+          s.setDynamicTooltip();
+          s.onChange(async (v) => {
+            this.plugin.settings.navigatorPreviewLines = v;
+            this.plugin.getNavigatorView()?.clearSnippetCache();
+            await this.save();
+          });
+        });
+
+      new Setting(el)
+        .setName('Skip preview for Base notes')
+        .setDesc('When on, notes whose first 3 lines contain a transcluded Base (![[*.base]]) or an inline ```base block are shown without a preview excerpt.')
         .addToggle((t) => {
-          t.setValue(this.plugin.settings.navigatorToolbarVisible[key]);
-          t.onChange(async (v) => { this.plugin.settings.navigatorToolbarVisible[key] = v; await this.save(); });
+          t.setValue(this.plugin.settings.navigatorSkipPreviewForBases);
+          t.onChange(async (v) => { this.plugin.settings.navigatorSkipPreviewForBases = v; await this.save(); });
         });
     }
 
+    // ── Tile explorer ─────────────────────────────────────────────────────
+    new Setting(el).setName('Tile explorer').setHeading();
+
+    new Setting(el)
+      .setName('Opening position')
+      .setDesc('Where the explorer starts when you open it.')
+      .addDropdown((d) => {
+        d.addOption('active-parent', 'Active note\'s parent');
+        d.addOption('home', 'Home note');
+        d.addOption('roots', 'Vault roots');
+        d.setValue(this.plugin.settings.explorerStartMode);
+        d.onChange(async (v: string) => {
+          this.plugin.settings.explorerStartMode = v as 'active-parent' | 'home' | 'roots';
+          await this.save();
+          this.display();
+        });
+      });
+
+    if (this.plugin.settings.explorerStartMode === 'home') {
+      new Setting(el)
+        .setName('Home note')
+        .setDesc('The note to start from. The explorer will show its children.')
+        .addText((t) => {
+          t.setPlaceholder('e.g. Meta/Index');
+          t.setValue(this.plugin.settings.explorerHomeNote);
+          t.onChange(async (v) => { this.plugin.settings.explorerHomeNote = v.trim(); await this.save(); });
+        });
+    }
+
+    new Setting(el)
+      .setName('Double-tap to open note')
+      .setDesc('When on, double-tapping a folder tile opens the note directly. When off, a long-press (500 ms) is required. Single-tap always drills into the folder. Note: double-tap mode adds a ~300 ms delay to single-taps.')
+      .addToggle((t) => {
+        t.setValue(this.plugin.settings.explorerDoubleTapToOpen);
+        t.onChange(async (v) => { this.plugin.settings.explorerDoubleTapToOpen = v; await this.save(); });
+      });
+
+    if (this.advancedMode) {
+      new Setting(el)
+        .setName('Tile minimum width')
+        .setDesc('Minimum width of each tile in the explorer grid (px). Smaller values fit more tiles per row.')
+        .addSlider((s) => {
+          s.setLimits(60, 160, 10);
+          s.setValue(this.plugin.settings.explorerTileMinWidth);
+          s.setDynamicTooltip();
+          s.onChange(async (v) => { this.plugin.settings.explorerTileMinWidth = v; await this.save(); });
+        });
+    }
+
+    // ── Floating navigator ─────────────────────────────────────────────────
     new Setting(el).setName('Floating navigator').setHeading();
 
     if (Platform.isMobile) {
@@ -532,15 +680,45 @@ class BreadTrailSettingTab extends PluginSettingTab {
         });
 
       new Setting(el)
-        .setName('Pinch to open explorer')
-        .setDesc('Spread two fingers apart anywhere on screen to open the tile explorer.')
+        .setName('Gesture navigation')
+        .setDesc('Enable two-finger gestures anywhere on screen to open the tile explorer.')
         .addToggle((t) => {
           t.setValue(this.plugin.settings.mobileTapExplorer);
           t.onChange(async (v) => { this.plugin.settings.mobileTapExplorer = v; await this.save(); });
         });
+
+      const gestureOptions = (d: import('obsidian').DropdownComponent) => {
+        d.addOption('off',      'Off — do nothing');
+        d.addOption('parent',   'Open parent — show where the active note lives');
+        d.addOption('children', 'Open children — show what\'s inside the active note');
+      };
+
+      new Setting(el)
+        .setName('Pinch action')
+        .setDesc('What the two-finger pinch-in (contract) gesture does.')
+        .addDropdown((d) => {
+          gestureOptions(d);
+          d.setValue(this.plugin.settings.explorerGesturePinch);
+          d.onChange(async (v) => {
+            this.plugin.settings.explorerGesturePinch = v as import('./settings').ExplorerGestureAction;
+            await this.save();
+          });
+        });
+
+      new Setting(el)
+        .setName('Spread action')
+        .setDesc('What the two-finger spread-out (expand) gesture does.')
+        .addDropdown((d) => {
+          gestureOptions(d);
+          d.setValue(this.plugin.settings.explorerGestureExpand);
+          d.onChange(async (v) => {
+            this.plugin.settings.explorerGestureExpand = v as import('./settings').ExplorerGestureAction;
+            await this.save();
+          });
+        });
     } else {
       el.createEl('p', {
-        text: 'A thin strip on the edge of each note that expands on hover, showing the same breadcrumb context as the sidebar. Clicking the pin button opens the sidebar on that side; closing the sidebar brings the float back.',
+        text: 'A thin strip on the edge of each note that expands on hover, showing the same breadcrumb context as the sidebar. Clicking the pin opens the sidebar on that side; closing it brings the float back.',
         cls: 'setting-item-description',
       });
 
@@ -561,6 +739,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
         });
     }
 
+    // ── Header breadcrumbs ─────────────────────────────────────────────────
     new Setting(el)
       .setName('Header breadcrumbs')
       .setDesc('Replace the file-path breadcrumb in note headers with clickable BC ancestor links.')
@@ -573,25 +752,37 @@ class BreadTrailSettingTab extends PluginSettingTab {
         });
       });
 
-    new Setting(el)
-      .setName('Breadcrumb depth')
-      .setDesc('How many ancestor levels to show. 0 = all.')
-      .addSlider((s) => {
-        s.setLimits(0, 8, 1);
-        s.setValue(this.plugin.settings.headerBreadcrumbsDepth);
-        s.setDynamicTooltip();
-        s.onChange(async (v) => {
-          this.plugin.settings.headerBreadcrumbsDepth = v;
-          await this.save();
-          this.plugin.updateAllHeaderBreadcrumbs();
+    if (this.advancedMode) {
+      new Setting(el)
+        .setName('Breadcrumb depth')
+        .setDesc('How many ancestor levels to show. 0 = all.')
+        .addSlider((s) => {
+          s.setLimits(0, 8, 1);
+          s.setValue(this.plugin.settings.headerBreadcrumbsDepth);
+          s.setDynamicTooltip();
+          s.onChange(async (v) => {
+            this.plugin.settings.headerBreadcrumbsDepth = v;
+            await this.save();
+            this.plugin.updateAllHeaderBreadcrumbs();
+          });
         });
-      });
+    }
 
-    new Setting(el).setName('Favorites view').setHeading();
+    // ── Pinboard ───────────────────────────────────────────────────────────
+    new Setting(el).setName('Pinboard').setHeading();
+
+    el.createEl('p', {
+      text: 'The ★ Favorites sidebar tab is a fully customizable pinboard. Enable sections, reorder them with ↑ ↓, and configure each one below.',
+      cls: 'setting-item-description',
+    });
+
+    this.renderPinboardSections(el);
+
+    new Setting(el).setName('Favorites section').setHeading();
 
     new Setting(el)
       .setName('Pinned notes')
-      .setDesc('File paths to always include in favorites, one per line. Notes with bread-trail.favorite: true in their frontmatter are also included automatically.')
+      .setDesc('File paths to always include in the Favorites section, one per line. Notes with bread-trail.favorite: true in their frontmatter are also included automatically.')
       .addTextArea((t) => {
         t.setPlaceholder('Journal/Index.md\nProjects/MOC.md');
         t.setValue(this.plugin.settings.navigatorFavorites.join('\n'));
@@ -603,92 +794,30 @@ class BreadTrailSettingTab extends PluginSettingTab {
       });
 
     new Setting(el)
-      .setName('Favorites metadata properties')
-      .setDesc('Frontmatter keys shown in favorites view cards, one per line.')
-      .addTextArea((t) => {
-        t.setPlaceholder('Date\nstatus');
-        t.setValue(this.plugin.settings.navigatorFavoritesMetaProperties.join('\n'));
-        t.inputEl.rows = 3;
-        t.onChange(async (v) => {
-          this.plugin.settings.navigatorFavoritesMetaProperties = v.split('\n').map((s) => s.trim()).filter(Boolean);
-          await this.save();
-        });
-      });
-
-    new Setting(el).setName('Recent view').setHeading();
-
-    new Setting(el)
-      .setName('Recent metadata properties')
-      .setDesc('Frontmatter keys shown in recent view cards, one per line. Independent from the context/browse card properties.')
-      .addTextArea((t) => {
-        t.setPlaceholder('Date\nstatus');
-        t.setValue(this.plugin.settings.navigatorRecentMetaProperties.join('\n'));
-        t.inputEl.rows = 3;
-        t.onChange(async (v) => {
-          this.plugin.settings.navigatorRecentMetaProperties = v.split('\n').map((s) => s.trim()).filter(Boolean);
-          await this.save();
-        });
-      });
-
-    new Setting(el)
-      .setName('Recent sort field')
-      .setDesc('Frontmatter date field to sort by in recent view. Leave blank to use file modification time.')
+      .setName('Favorites parent note')
+      .setDesc('Path to a note whose BC children are treated as favorites. Leave blank to disable.')
       .addText((t) => {
-        t.setPlaceholder('Date-modified');
-        t.setValue(this.plugin.settings.navigatorRecentSortField);
-        t.onChange(async (v) => { this.plugin.settings.navigatorRecentSortField = v.trim(); await this.save(); });
+        t.setPlaceholder('e.g. Meta/Frequent.md');
+        t.setValue(this.plugin.settings.navigatorFavoritesParentNote);
+        t.onChange(async (v) => { this.plugin.settings.navigatorFavoritesParentNote = v.trim(); await this.save(); });
       });
 
-    new Setting(el)
-      .setName('Recent view limit')
-      .setDesc('Maximum number of notes to show in recent view.')
-      .addText((t) => {
-        t.inputEl.type = 'number';
-        t.inputEl.min = '1';
-        t.inputEl.step = '1';
-        t.setValue(String(this.plugin.settings.navigatorRecentLimit));
-        t.onChange(async (v) => {
-          const n = parseInt(v, 10);
-          if (!isNaN(n) && n > 0) { this.plugin.settings.navigatorRecentLimit = n; await this.save(); }
-        });
-      });
-
-    new Setting(el)
-      .setName('Normalize links in group-by values')
-      .setDesc('When on, [[index]] and index are treated as the same group. Applies whenever bread-trail.group-by is set on a note.')
-      .addToggle((t) => {
-        t.setValue(this.plugin.settings.navigatorGroupByNormalizeLinks);
-        t.onChange(async (v) => { this.plugin.settings.navigatorGroupByNormalizeLinks = v; await this.save(); });
-      });
-
-    new Setting(el).setName('Browse mode').setHeading();
-
-    new Setting(el)
-      .setName('Start view')
-      .setDesc('What the browse view shows when you first open it.')
-      .addDropdown((d) => {
-        d.addOption('active', 'Parent of active note');
-        d.addOption('note',   'Specific note');
-        d.addOption('roots',  'Vault roots (top of hierarchy)');
-        d.setValue(this.plugin.settings.navigatorBrowseStart);
-        d.onChange(async (v) => {
-          this.plugin.settings.navigatorBrowseStart = v as 'active' | 'note' | 'roots';
-          await this.save();
-          this.display();
-        });
-      });
-
-    if (this.plugin.settings.navigatorBrowseStart === 'note') {
+    if (this.advancedMode) {
       new Setting(el)
-        .setName('Start note path')
-        .setDesc('Path to the note browse opens at. Example: Journal/Index.md')
-        .addText((t) => {
-          t.setPlaceholder('Journal/Index.md');
-          t.setValue(this.plugin.settings.navigatorBrowseStartNote);
-          t.onChange(async (v) => { this.plugin.settings.navigatorBrowseStartNote = v.trim(); await this.save(); });
+        .setName('Favorites metadata properties')
+        .setDesc('Frontmatter keys shown in Favorites section cards, one per line.')
+        .addTextArea((t) => {
+          t.setPlaceholder('Date\nStatus');
+          t.setValue(this.plugin.settings.navigatorFavoritesMetaProperties.join('\n'));
+          t.inputEl.rows = 3;
+          t.onChange(async (v) => {
+            this.plugin.settings.navigatorFavoritesMetaProperties = v.split('\n').map((s) => s.trim()).filter(Boolean);
+            await this.save();
+          });
         });
     }
 
+    // ── Exclusions ─────────────────────────────────────────────────────────
     new Setting(el).setName('Exclusions').setHeading();
 
     new Setting(el)
@@ -717,18 +846,306 @@ class BreadTrailSettingTab extends PluginSettingTab {
         });
       });
 
-    new Setting(el)
-      .setName('Exclude by frontmatter')
-      .setDesc('"key" hides notes where that key is truthy. "key:value" matches exactly. Example: type:template, draft, status:archived')
-      .addTextArea((t) => {
-        t.setPlaceholder('Type:template, draft, status:archived');
-        t.setValue(this.plugin.settings.navigatorExcludeFrontmatter.join(', '));
-        t.inputEl.rows = 2;
-        t.onChange(async (v) => {
-          this.plugin.settings.navigatorExcludeFrontmatter = v.split(',').map((s) => s.trim()).filter(Boolean);
+    if (this.advancedMode) {
+      new Setting(el)
+        .setName('Exclude by frontmatter')
+        .setDesc('"key" hides notes where that key is truthy. "key:value" matches exactly. Example: type:template, draft, status:archived')
+        .addTextArea((t) => {
+          t.setPlaceholder('Type:template, draft, status:archived');
+          t.setValue(this.plugin.settings.navigatorExcludeFrontmatter.join(', '));
+          t.inputEl.rows = 2;
+          t.onChange(async (v) => {
+            this.plugin.settings.navigatorExcludeFrontmatter = v.split(',').map((s) => s.trim()).filter(Boolean);
+            await this.save();
+          });
+        });
+
+      // ── Toolbar buttons ───────────────────────────────────────────────────
+      new Setting(el).setName('Toolbar buttons').setHeading();
+
+      const toolbarDefs: { key: keyof BreadTrailSettings['navigatorToolbarVisible']; name: string; desc: string }[] = [
+        { key: 'context',    name: 'Context mode',     desc: 'Show the Context button (breadcrumb hierarchy view).' },
+        { key: 'browse',     name: 'Browse mode',       desc: 'Show the Browse button (folder drill-down view).' },
+        { key: 'recent',     name: 'Recent mode',       desc: 'Show the Recent button (recently modified notes).' },
+        { key: 'favorites',  name: 'Favorites mode',    desc: 'Show the Favorites / Pinboard button.' },
+        { key: 'reset',      name: 'Reset browser',     desc: 'Show the button that resets the browse view to its configured start.' },
+        { key: 'goToActive', name: 'Go to active note', desc: 'Show the button that jumps the browse view to the currently open note.' },
+      ];
+
+      for (const { key, name, desc } of toolbarDefs) {
+        new Setting(el)
+          .setName(name)
+          .setDesc(desc)
+          .addToggle((t) => {
+            t.setValue(this.plugin.settings.navigatorToolbarVisible[key]);
+            t.onChange(async (v) => { this.plugin.settings.navigatorToolbarVisible[key] = v; await this.save(); });
+          });
+      }
+
+      // ── Recent view ───────────────────────────────────────────────────────
+      new Setting(el).setName('Recent view').setHeading();
+
+      new Setting(el)
+        .setName('Recent metadata properties')
+        .setDesc('Frontmatter keys shown in recent view cards, one per line. Independent from the context/browse card properties.')
+        .addTextArea((t) => {
+          t.setPlaceholder('Date\nStatus');
+          t.setValue(this.plugin.settings.navigatorRecentMetaProperties.join('\n'));
+          t.inputEl.rows = 3;
+          t.onChange(async (v) => {
+            this.plugin.settings.navigatorRecentMetaProperties = v.split('\n').map((s) => s.trim()).filter(Boolean);
+            await this.save();
+          });
+        });
+
+      new Setting(el)
+        .setName('Recent sort field')
+        .setDesc('Frontmatter date field to sort by in recent view. Leave blank to use file modification time.')
+        .addText((t) => {
+          t.setPlaceholder('Date-modified');
+          t.setValue(this.plugin.settings.navigatorRecentSortField);
+          t.onChange(async (v) => { this.plugin.settings.navigatorRecentSortField = v.trim(); await this.save(); });
+        });
+
+      new Setting(el)
+        .setName('Recent view limit')
+        .setDesc('Maximum number of notes to show in recent view.')
+        .addText((t) => {
+          t.inputEl.type = 'number';
+          t.inputEl.min = '1';
+          t.inputEl.step = '1';
+          t.setValue(String(this.plugin.settings.navigatorRecentLimit));
+          t.onChange(async (v) => {
+            const n = parseInt(v, 10);
+            if (!isNaN(n) && n > 0) { this.plugin.settings.navigatorRecentLimit = n; await this.save(); }
+          });
+        });
+
+      new Setting(el)
+        .setName('Normalize links in group-by values')
+        .setDesc('When on, [[index]] and index are treated as the same group. Applies whenever bread-trail.group-by is set on a note.')
+        .addToggle((t) => {
+          t.setValue(this.plugin.settings.navigatorGroupByNormalizeLinks);
+          t.onChange(async (v) => { this.plugin.settings.navigatorGroupByNormalizeLinks = v; await this.save(); });
+        });
+
+      // ── Browse mode ───────────────────────────────────────────────────────
+      new Setting(el).setName('Browse mode').setHeading();
+
+      new Setting(el)
+        .setName('Start view')
+        .setDesc('What the browse view shows when you first open it.')
+        .addDropdown((d) => {
+          d.addOption('active', 'Parent of active note');
+          d.addOption('note',   'Specific note');
+          d.addOption('roots',  'Vault roots (top of hierarchy)');
+          d.setValue(this.plugin.settings.navigatorBrowseStart);
+          d.onChange(async (v) => {
+            this.plugin.settings.navigatorBrowseStart = v as 'active' | 'note' | 'roots';
+            await this.save();
+            this.display();
+          });
+        });
+
+      if (this.plugin.settings.navigatorBrowseStart === 'note') {
+        new Setting(el)
+          .setName('Start note path')
+          .setDesc('Path to the note browse opens at. Example: Journal/Index.md')
+          .addText((t) => {
+            t.setPlaceholder('Journal/Index.md');
+            t.setValue(this.plugin.settings.navigatorBrowseStartNote);
+            t.onChange(async (v) => { this.plugin.settings.navigatorBrowseStartNote = v.trim(); await this.save(); });
+          });
+      }
+
+      // ── Home view ─────────────────────────────────────────────────────────
+      new Setting(el).setName('Home view').setHeading();
+
+      new Setting(el)
+        .setName('Show favorites on home view')
+        .setDesc('Display a Favorites section at the bottom of the browser home (vault roots) view.')
+        .addToggle((t) => {
+          t.setValue(this.plugin.settings.navigatorHomeShowFavorites);
+          t.onChange(async (v) => { this.plugin.settings.navigatorHomeShowFavorites = v; await this.save(); });
+        });
+
+      new Setting(el)
+        .setName('Show recent notes on home view')
+        .setDesc('Display a Recent section at the bottom of the browser home (vault roots) view.')
+        .addToggle((t) => {
+          t.setValue(this.plugin.settings.navigatorHomeShowRecents);
+          t.onChange(async (v) => { this.plugin.settings.navigatorHomeShowRecents = v; await this.save(); });
+        });
+
+      new Setting(el)
+        .setName('Home view recent count')
+        .setDesc('Max number of recent notes shown in the home view Recent section.')
+        .addSlider((s) => {
+          s.setLimits(3, 30, 1);
+          s.setValue(this.plugin.settings.navigatorHomeRecentsCount);
+          s.setDynamicTooltip();
+          s.onChange(async (v) => { this.plugin.settings.navigatorHomeRecentsCount = v; await this.save(); });
+        });
+    }
+  }
+
+  // ── Pinboard section reorder UI ───────────────────────────────────────────
+
+  private renderPinboardSections(el: HTMLElement) {
+    const DEFS: Record<string, { name: string; icon: string; desc: string }> = {
+      favorites: { name: 'Favorites', icon: 'star',        desc: 'Starred and pinned notes'       },
+      current:   { name: 'Current',   icon: 'folder-open', desc: 'BC children of the active note' },
+      recents:   { name: 'Recent',    icon: 'clock',       desc: 'Recently modified notes'        },
+      roots:     { name: 'Roots',     icon: 'git-branch',  desc: 'Top-level BC hierarchy nodes'   },
+      tag:       { name: 'Tag',       icon: 'tag',         desc: 'Notes with a specific tag'      },
+      filter:    { name: 'Filter',    icon: 'filter',      desc: 'Notes matching a frontmatter pattern' },
+    };
+
+    const fixedTypes = new Set<PinboardSectionType>(['favorites', 'current', 'recents', 'roots']);
+    const sections = this.plugin.settings.navigatorPinboardSections;
+
+    for (let i = 0; i < sections.length; i++) {
+      const sec = sections[i];
+      const def = DEFS[sec.type] ?? { name: sec.type, icon: 'file', desc: '' };
+      const isCustom = !fixedTypes.has(sec.type);
+
+      const displayName = isCustom
+        ? (sec.param ? `${def.name}: ${sec.param}` : `${def.name} (set below)`)
+        : def.name;
+
+      const setting = new Setting(el)
+        .setName(displayName)
+        .setDesc(def.desc)
+        .addToggle((t) => {
+          t.setValue(sec.enabled);
+          t.onChange(async (v) => { sec.enabled = v; await this.save(); });
+        });
+
+      // Move-up button
+      setting.addExtraButton((btn) => {
+        btn.setIcon('arrow-up').setTooltip('Move up');
+        btn.extraSettingsEl.toggleClass('is-disabled', i === 0);
+        btn.onClick(async () => {
+          if (i === 0) return;
+          [sections[i - 1], sections[i]] = [sections[i], sections[i - 1]];
           await this.save();
+          this.display();
         });
       });
+
+      // Move-down button
+      setting.addExtraButton((btn) => {
+        btn.setIcon('arrow-down').setTooltip('Move down');
+        btn.extraSettingsEl.toggleClass('is-disabled', i === sections.length - 1);
+        btn.onClick(async () => {
+          if (i === sections.length - 1) return;
+          [sections[i], sections[i + 1]] = [sections[i + 1], sections[i]];
+          await this.save();
+          this.display();
+        });
+      });
+
+      // Delete button for custom (tag/filter) sections
+      if (isCustom) {
+        setting.addExtraButton((btn) => {
+          btn.setIcon('trash').setTooltip('Remove section');
+          btn.onClick(async () => {
+            sections.splice(i, 1);
+            await this.save();
+            this.display();
+          });
+        });
+      }
+
+      // Icon prefix
+      const iconSpan = setting.nameEl.createSpan({ cls: 'bt-pinboard-setting-icon' });
+      setting.nameEl.prepend(iconSpan);
+      setIcon(iconSpan, def.icon);
+
+      // Param input for tag/filter
+      if (sec.type === 'tag') {
+        new Setting(el)
+          .setName('Tag')
+          .setDesc('Show notes tagged with this value (sub-tags included, e.g. project also matches project/work).')
+          .addText((t) => {
+            t.setPlaceholder('project');
+            t.setValue(sec.param);
+            t.onChange(async (v) => { sec.param = v.trim().replace(/^#/, ''); await this.save(); });
+          });
+      }
+
+      if (sec.type === 'filter') {
+        new Setting(el)
+          .setName('Frontmatter filter')
+          .setDesc('"key" matches any truthy value. "key:value" matches exactly. Example: status:active')
+          .addText((t) => {
+            t.setPlaceholder('status:active');
+            t.setValue(sec.param);
+            t.onChange(async (v) => { sec.param = v.trim(); await this.save(); });
+          });
+      }
+
+      // Limit for recents / tag / filter
+      if (sec.type === 'recents' || sec.type === 'tag' || sec.type === 'filter') {
+        new Setting(el)
+          .setName('Limit')
+          .setDesc('Max notes shown. 0 = show all.')
+          .addText((t) => {
+            t.inputEl.type = 'number';
+            t.inputEl.min = '0';
+            t.inputEl.step = '1';
+            t.setValue(String(sec.limit > 0 ? sec.limit : (sec.type === 'recents' ? 10 : 0)));
+            t.onChange(async (v) => {
+              const n = parseInt(v, 10);
+              if (!isNaN(n) && n >= 0) { sec.limit = n; await this.save(); }
+            });
+          });
+      }
+
+      if (sec.type === 'current') {
+        new Setting(el)
+          .setName('Limit')
+          .setDesc('Max children shown. 0 = show all.')
+          .addText((t) => {
+            t.inputEl.type = 'number';
+            t.inputEl.min = '0';
+            t.inputEl.step = '1';
+            t.setValue(String(sec.limit));
+            t.onChange(async (v) => {
+              const n = parseInt(v, 10);
+              if (!isNaN(n) && n >= 0) { sec.limit = n; await this.save(); }
+            });
+          });
+      }
+
+      // Custom label for every section
+      new Setting(el)
+        .setName('Custom label')
+        .setDesc(`Override the section header. Leave blank to use default.`)
+        .addText((t) => {
+          t.setPlaceholder(def.name);
+          t.setValue(sec.label);
+          t.onChange(async (v) => { sec.label = v.trim(); await this.save(); });
+        });
+    }
+
+    // ── Add custom section buttons ─────────────────────────────────────────
+    const addRow = el.createDiv({ cls: 'bt-pinboard-add-row' });
+
+    const addBtn = (label: string, icon: string, type: 'tag' | 'filter') => {
+      const btn = addRow.createEl('button', { text: label, cls: 'bt-pinboard-add-btn' });
+      const iconEl = btn.createSpan({ cls: 'bt-pinboard-add-icon' });
+      btn.prepend(iconEl);
+      setIcon(iconEl, icon);
+      btn.addEventListener('click', async () => {
+        sections.push({ type, enabled: true, label: '', limit: 0, param: '' });
+        await this.save();
+        this.display();
+      });
+    };
+
+    addBtn('Add tag section', 'tag', 'tag');
+    addBtn('Add filter section', 'filter', 'filter');
   }
 
   // ── Sequences ─────────────────────────────────────────────────────────────
