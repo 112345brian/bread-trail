@@ -426,11 +426,17 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     // ── Tab bar ───────────────────────────────────────────────────────────
     const tabBar = containerEl.createDiv('bread-trail-settings-tabs');
+    tabBar.setAttribute('role', 'tablist');
+    tabBar.setAttribute('aria-label', 'Breadtrail settings');
     for (const tab of TABS) {
+      const isActive = this.activeTab === tab.id;
       const btn = tabBar.createEl('button', {
         text: tab.label,
-        cls: 'bread-trail-settings-tab' + (this.activeTab === tab.id ? ' is-active' : ''),
+        cls: 'bread-trail-settings-tab' + (isActive ? ' is-active' : ''),
       });
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-selected', String(isActive));
+      btn.setAttribute('tabindex', isActive ? '0' : '-1');
       btn.addEventListener('click', () => {
         this.activeTab = tab.id;
         this.display();
