@@ -132,6 +132,10 @@ export class NavigatorView extends ItemView {
 
   scheduleRefresh(delay = 80) {
     if (this.refreshTimer) window.clearTimeout(this.refreshTimer);
+    // Invalidate the homepage-target cache eagerly so any action that fires
+    // between now and the deferred refresh (e.g. goToActive click) sees
+    // fresh data rather than the result computed for the old settings.
+    this._homepageTargetCache = null;
     this.refreshTimer = window.setTimeout(() => { void this.refresh(); }, delay);
   }
 
