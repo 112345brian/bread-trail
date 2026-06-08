@@ -134,6 +134,8 @@ export interface BreadTrailSettings {
   navigatorLayoutMode: 'list' | 'grid-small' | 'grid-large';
   /** Minimum tile width (px) in the tile explorer grid. Smaller = more columns. */
   explorerTileMinWidth: number;
+  /** Where the tile explorer opens when no homepage target applies. */
+  explorerDefaultStart: 'active-parent' | 'roots';
   /** Folder paths whose contents are hidden from the navigator (prefix match). */
   navigatorExcludeFolders: string[];
   /** Exact file paths to hide from the navigator. */
@@ -217,6 +219,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   navigatorPreviewLines: 3,
   navigatorLayoutMode: 'grid-large',
   explorerTileMinWidth: 90,
+  explorerDefaultStart: 'active-parent',
   navigatorExcludeFolders: [],
   navigatorExcludeFiles: [],
   navigatorExcludeFrontmatter: [],
@@ -345,6 +348,13 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     navigatorPreviewLines: typeof settings.navigatorPreviewLines === 'number' && settings.navigatorPreviewLines > 0 ? Math.floor(settings.navigatorPreviewLines) : 3,
     navigatorLayoutMode: (settings.navigatorLayoutMode === 'list' ? 'list' : settings.navigatorLayoutMode === 'grid-small' ? 'grid-small' : 'grid-large'),
     explorerTileMinWidth: typeof settings.explorerTileMinWidth === 'number' && settings.explorerTileMinWidth >= 60 ? Math.floor(settings.explorerTileMinWidth) : 90,
+    explorerDefaultStart: (() => {
+      if (settings.explorerDefaultStart === 'roots') return 'roots';
+      // Migrate from removed explorerStartMode setting
+      const legacy = (settings as { explorerStartMode?: unknown }).explorerStartMode;
+      if (legacy === 'roots') return 'roots';
+      return 'active-parent';
+    })(),
     navigatorExcludeFolders: Array.isArray(settings.navigatorExcludeFolders)
       ? (settings.navigatorExcludeFolders as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((s) => s.trim())
       : [],
@@ -667,6 +677,19 @@ class BreadTrailSettingTab extends PluginSettingTab {
       });
 
     if (this.advancedMode) {
+      new Setting(el)
+        .setName('Default opening position')
+        .setDesc('Where the tile explorer starts when no home note or homepage target applies.')
+        .addDropdown((d) => {
+          d.addOption('active-parent', "Active note's parent");
+          d.addOption('roots', 'Vault roots');
+          d.setValue(this.plugin.settings.explorerDefaultStart);
+          d.onChange(async (v: string) => {
+            this.plugin.settings.explorerDefaultStart = v as 'active-parent' | 'roots';
+            await this.save();
+          });
+        });
+
       new Setting(el)
         .setName('Tile minimum width')
         .setDesc('Minimum width of each tile in the explorer grid (px). Smaller values fit more tiles per row.')

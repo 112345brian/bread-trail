@@ -11,7 +11,7 @@ import { SequenceModal, SequenceAllModal, RemoveStaleModal } from './SequenceMod
 import { Sequencer, parseLinkChildrenConfig, findAllConfiguredParents } from './Sequencer';
 import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
-import { getHomepageTargetForFile, resolveHomepageTarget } from './homepageUtils';
+import { getHomepageTargetForFile } from './homepageUtils';
 import type { HomepageTarget } from './homepageUtils';
 
 export interface BreadcrumbEdge {
@@ -360,7 +360,7 @@ export default class BreadTrail extends Plugin {
     const effectiveStartMode = effectiveRootFolder
       ? 'roots'
       : (this.settings.homeNote && effectiveStartFile === undefined)
-      ? 'home' : 'active-parent';
+      ? 'home' : this.settings.explorerDefaultStart;
     const effectiveHomeNote = this.settings.homeNote;
     const modal = new ExplorerModal(
       this.app, bc,

@@ -59,6 +59,10 @@ export class NavigatorView extends ItemView {
   // When set, BC root view is scoped to this vault folder.
   private browserRootFolder: string | null = null;
 
+  // Per-file cache for homepage target — avoids O(n) vault scan on every
+  // toolbar render. Cleared at the start of each refresh cycle.
+  private _homepageTargetCache: { path: string | null; result: HomepageTarget | null } | null = null;
+
   // Recent sub-mode: 'global' = all vault, 'local' = siblings of active note
   private recentViewMode: 'global' | 'local' = 'global';
 
@@ -205,7 +209,22 @@ export class NavigatorView extends ItemView {
 
   // ── Data computation ───────────────────────────────────────────────────────
 
+  /** Cached wrapper around getHomepageTargetForFile. The cache is keyed by
+   *  active file path and cleared at the start of every refresh cycle, so the
+   *  O(n) cssclasses scan only fires once per refresh even if multiple callers
+   *  (toolbar, initBrowserStack, goToActive) need the result in the same tick. */
+  private getCachedHomepageTarget(file: TFile | null): HomepageTarget | null {
+    const path = file?.path ?? null;
+    if (this._homepageTargetCache?.path === path) return this._homepageTargetCache.result;
+    const result = getHomepageTargetForFile(file, this.app, this.settings);
+    this._homepageTargetCache = { path, result };
+    return result;
+  }
+
   private async computeNavData(): Promise<NavData> {
+    // Invalidate the homepage-target cache once per refresh cycle so all
+    // callers within this cycle share the same result without re-scanning.
+    this._homepageTargetCache = null;
     const bc = this.getBc();
     const activeFile = this.app.workspace.getActiveFile();
     const toolbar = this.computeToolbarData(activeFile, bc);
@@ -1108,16 +1127,14 @@ export class NavigatorView extends ItemView {
       goToActive: () => {
         const bc = this.getBc();
         const file = this.app.workspace.getActiveFile();
-        const atActive = this.mode === 'browser' && this.isBrowserAtActiveNote(file, bc);
-        if (atActive) {
-          this.initBrowserStack(file, bc);
-        } else {
-          if (file && getHomepageTargetForFile(file, this.app, this.settings)) {
-            this.initBrowserStack(file, bc);
-          } else if (file && bc) {
-            this.browserRootFolder = null;
-            this.browserStack = [this.getBrowserContainerForActiveFile(file, bc)];
-          }
+        // Hoist so isBrowserAtActiveNote and initBrowserStack share one result
+        const homepageTarget = this.getCachedHomepageTarget(file);
+        const atActive = this.mode === 'browser' && this.isBrowserAtActiveNote(file, bc, homepageTarget);
+        if (atActive || homepageTarget) {
+          this.initBrowserStack(file, bc, homepageTarget);
+        } else if (file && bc) {
+          this.browserRootFolder = null;
+          this.browserStack = [this.getBrowserContainerForActiveFile(file, bc)];
         }
         if (this.mode !== 'browser') this.applyMode('browser');
         else void this.refresh();
@@ -1260,9 +1277,12 @@ export class NavigatorView extends ItemView {
     return cycle;
   }
 
-  private isBrowserAtActiveNote(activeFile: TFile | null, bc: BreadcrumbsPlugin | null): boolean {
+  private isBrowserAtActiveNote(
+    activeFile: TFile | null,
+    bc: BreadcrumbsPlugin | null,
+    homepageTarget = this.getCachedHomepageTarget(activeFile),
+  ): boolean {
     if (!activeFile || this.browserViewMode === 'files') return false;
-    const homepageTarget = getHomepageTargetForFile(activeFile, this.app, this.settings);
     if (homepageTarget?.kind === 'folder') {
       return this.browserStack.length === 0 && this.browserRootFolder === homepageTarget.path;
     }
@@ -1280,8 +1300,11 @@ export class NavigatorView extends ItemView {
     return (bc ? this.getFirstParentFile(activeFile, bc) : null) ?? activeFile;
   }
 
-  private initBrowserStack(activeFile: TFile | null, bc: BreadcrumbsPlugin | null) {
-    const homepageTarget = getHomepageTargetForFile(activeFile, this.app, this.settings);
+  private initBrowserStack(
+    activeFile: TFile | null,
+    bc: BreadcrumbsPlugin | null,
+    homepageTarget = this.getCachedHomepageTarget(activeFile),
+  ) {
     if (homepageTarget?.kind === 'folder') {
       this.browserViewMode = 'bc';
       this.browserRootFolder = homepageTarget.path;
