@@ -564,6 +564,7 @@ export default class BreadTrail extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+    this.getNavigatorView()?.scheduleRefresh();
   }
 
   private ensureBreadcrumbs(): BreadcrumbsPlugin | null {
