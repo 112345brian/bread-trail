@@ -2473,12 +2473,13 @@
   height: 22px;
 }
 
-/* Active tab: accent underline */
+/* Active tab: subtle indicator matching sidebar palette */
 .is-mobile .bread-trail-nav-mode-btn.is-active {
-  background: transparent;
+  background: var(--background-modifier-hover);
   box-shadow: none;
-  color: var(--color-accent);
-  border-bottom: 2px solid var(--color-accent);
+  color: var(--text-normal);
+  border-bottom: 2px solid var(--text-muted);
+  border-radius: 4px 4px 0 0;
 }
 
 /* Action buttons: 44px tall to match mode buttons, fixed width */
@@ -2510,7 +2511,7 @@
   gap: 6px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
+  background: var(--background-secondary);
   flex-shrink: 0;
   position: sticky;
   top: 0;
