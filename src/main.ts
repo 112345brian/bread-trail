@@ -415,12 +415,16 @@ export default class BreadTrail extends Plugin {
     if (this.activeExplorerModal) return;
     const bc = this.ensureBreadcrumbs();
     if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
+    // homeNote unifies the start for both sidebar and modal; fall back to per-modal setting
+    const effectiveStartMode = (this.settings.homeNote && startFile === undefined)
+      ? 'home' : this.settings.explorerStartMode;
+    const effectiveHomeNote = this.settings.homeNote || this.settings.explorerHomeNote;
     const modal = new ExplorerModal(
       this.app, bc,
       this.settings.graphLabelProperty,
       this.settings.explorerTileMinWidth,
-      this.settings.explorerStartMode,
-      this.settings.explorerHomeNote,
+      effectiveStartMode,
+      effectiveHomeNote,
       this.settings.navigatorHomeShowFavorites,
       this.settings.navigatorHomeShowRecents,
       this.settings.navigatorHomeRecentsCount,
@@ -482,7 +486,10 @@ export default class BreadTrail extends Plugin {
 
       if (action === 'off') return;
 
-      if (action === 'children') {
+      if (action === 'home') {
+        // Open at the configured home note (no startFile override — uses homeNote)
+        this.openExplorerModal();
+      } else if (action === 'children') {
         // Open at the active note itself — shows its children
         this.openExplorerModal(this.app.workspace.getActiveFile());
       } else {

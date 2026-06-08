@@ -6,7 +6,7 @@ export type ValidationSeverity = 'error' | 'warning' | 'off';
 export type PinboardSectionType = 'favorites' | 'current' | 'recents' | 'roots' | 'tag' | 'filter';
 
 /** What a two-finger gesture does in the tile explorer. */
-export type ExplorerGestureAction = 'off' | 'parent' | 'children';
+export type ExplorerGestureAction = 'off' | 'parent' | 'children' | 'home';
 
 export interface PinboardSection {
   type: PinboardSectionType;
@@ -86,6 +86,9 @@ export interface BreadTrailSettings {
     reset: boolean;
     goToActive: boolean;
   };
+  /** Home note — the anchor the sidebar browser and explorer modal start from.
+   *  When set, overrides navigatorBrowseStart / explorerStartMode. */
+  homeNote: string;
   /** What the browse view starts from. */
   navigatorBrowseStart: 'active' | 'note' | 'roots';
   /** File path of the start note when navigatorBrowseStart is 'note'. */
@@ -201,6 +204,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
     reset: true,
     goToActive: true,
   },
+  homeNote: '',
   navigatorBrowseStart: 'active',
   navigatorBrowseStartNote: '',
   navigatorMetaProperties: [],
@@ -319,6 +323,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
           : def[key];
       return { context: b('context'), browse: b('browse'), recent: b('recent'), favorites: b('favorites'), preview: b('preview'), reset: b('reset'), goToActive: b('goToActive') };
     })(),
+    homeNote: typeof settings.homeNote === 'string' ? settings.homeNote.trim() : '',
     navigatorBrowseStart: (settings.navigatorBrowseStart === 'note' || settings.navigatorBrowseStart === 'roots')
       ? settings.navigatorBrowseStart : 'active',
     navigatorBrowseStartNote: typeof settings.navigatorBrowseStartNote === 'string'
@@ -331,8 +336,8 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     floatingNavRight: typeof settings.floatingNavRight === 'boolean' ? settings.floatingNavRight : false,
     mobileNavigatorSide: settings.mobileNavigatorSide === 'right' ? 'right' : 'left',
     mobileTapExplorer: typeof settings.mobileTapExplorer === 'boolean' ? settings.mobileTapExplorer : true,
-    explorerGesturePinch: (['off', 'parent', 'children'] as ExplorerGestureAction[]).includes(settings.explorerGesturePinch as ExplorerGestureAction) ? settings.explorerGesturePinch as ExplorerGestureAction : 'parent',
-    explorerGestureExpand: (['off', 'parent', 'children'] as ExplorerGestureAction[]).includes(settings.explorerGestureExpand as ExplorerGestureAction) ? settings.explorerGestureExpand as ExplorerGestureAction : 'children',
+    explorerGesturePinch: (['off', 'parent', 'children', 'home'] as ExplorerGestureAction[]).includes(settings.explorerGesturePinch as ExplorerGestureAction) ? settings.explorerGesturePinch as ExplorerGestureAction : 'parent',
+    explorerGestureExpand: (['off', 'parent', 'children', 'home'] as ExplorerGestureAction[]).includes(settings.explorerGestureExpand as ExplorerGestureAction) ? settings.explorerGestureExpand as ExplorerGestureAction : 'children',
     explorerDoubleTapToOpen: typeof settings.explorerDoubleTapToOpen === 'boolean' ? settings.explorerDoubleTapToOpen : false,
     headerBreadcrumbs: typeof settings.headerBreadcrumbs === 'boolean' ? settings.headerBreadcrumbs : false,
     headerBreadcrumbsDepth: typeof settings.headerBreadcrumbsDepth === 'number' ? settings.headerBreadcrumbsDepth : 0,
@@ -542,6 +547,21 @@ class BreadTrailSettingTab extends PluginSettingTab {
         t.onChange((v) => { this.advancedMode = v; this.display(); });
       });
 
+    // ── Home note ─────────────────────────────────────────────────────────
+    new Setting(el).setName('Home').setHeading();
+
+    new Setting(el)
+      .setName('Home note')
+      .setDesc('The note the sidebar browser and explorer modal start from. The reset button returns here. Leave blank to start from the active note\'s parent.')
+      .addText((t) => {
+        t.setPlaceholder('Index/Home.md');
+        t.setValue(this.plugin.settings.homeNote);
+        t.onChange(async (v) => {
+          this.plugin.settings.homeNote = v.trim();
+          await this.save();
+        });
+      });
+
     // ── Cards ─────────────────────────────────────────────────────────────
     new Setting(el).setName('Cards').setHeading();
 
@@ -691,6 +711,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
         d.addOption('off',      'Off — do nothing');
         d.addOption('parent',   'Open parent — show where the active note lives');
         d.addOption('children', 'Open children — show what\'s inside the active note');
+        d.addOption('home',     'Open home — go to the configured home note');
       };
 
       new Setting(el)

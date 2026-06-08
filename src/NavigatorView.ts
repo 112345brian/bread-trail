@@ -1251,6 +1251,14 @@ export class NavigatorView extends ItemView {
   }
 
   private initBrowserStack(activeFile: TFile | null, bc: BreadcrumbsPlugin | null) {
+    // Unified home note takes top priority
+    const homeNote = this.settings.homeNote;
+    if (homeNote) {
+      const f = this.app.vault.getAbstractFileByPath(homeNote) ??
+        this.app.vault.getMarkdownFiles().find((x) => x.basename === homeNote || x.path === homeNote) ??
+        null;
+      if (f instanceof TFile) { this.browserStack = [f]; return; }
+    }
     const start = this.settings.navigatorBrowseStart;
     if (start === 'roots') {
       this.browserStack = [];
