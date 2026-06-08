@@ -85,12 +85,10 @@ export interface NavActions {
   openFile: (file: TFile, newTab: boolean) => void;
   /** Drill into a note in browser mode (push to stack). */
   drillIn: (file: TFile) => void;
-  /**
-   * Switch modes.
-   * Smart behaviour: clicking the active mode's button toggles sub-state
-   * (browser: bc ↔ files; recent: global ↔ local) instead of switching away.
-   */
+  /** Switch modes. Clicking the active Recent button toggles global ↔ local. */
   setMode: (mode: NavMode) => void;
+  /** Toggle between BC hierarchy view and file-system view in browser mode. */
+  toggleFileBrowser: () => void;
   /** Smart locate / reset: goes to active note, or resets to vault roots when already there. */
   goToActive: () => void;
   togglePreview: () => void;

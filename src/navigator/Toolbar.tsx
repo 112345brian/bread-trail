@@ -37,9 +37,19 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
           browserViewMode, browserTitle, browserIsRoots, browserCanGoBack,
           browserSortMode, followMode, layoutMode, filterActive } = data;
   const isBrowser = mode === 'browser';
+  const isFileBrowser = isBrowser && browserViewMode === 'files';
 
   const openMenu = (e: MouseEvent) => {
     const menu = new Menu();
+
+    // ── Browser sub-mode ─────────────────────────────────────────────────
+    if (isBrowser) {
+      menu.addItem((item) =>
+        item.setSection('browser').setTitle(isFileBrowser ? 'BC hierarchy view' : 'File system view')
+          .setIcon(isFileBrowser ? 'git-branch' : 'hard-drive')
+          .setChecked(isFileBrowser)
+          .onClick(() => actions.toggleFileBrowser()));
+    }
 
     // ── View ──────────────────────────────────────────────────────────────
     menu.addItem((item) =>
@@ -88,8 +98,8 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
         )}
         {vis.browse && (
           <ModeBtn
-            icon={isBrowser && browserViewMode === 'files' ? 'hard-drive' : 'folder-open'}
-            label={isBrowser && browserViewMode === 'files' ? 'Browse (file system)' : 'Browse'}
+            icon={isFileBrowser ? 'hard-drive' : 'folder-open'}
+            label={isFileBrowser ? 'Browse (file system)' : 'Browse'}
             active={isBrowser}
             onClick={() => actions.setMode('browser')}
           />

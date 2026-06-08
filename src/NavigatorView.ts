@@ -1112,9 +1112,12 @@ export class NavigatorView extends ItemView {
 
       setMode: (mode) => {
         if (mode === 'browser' && this.mode === 'browser') {
-          // Toggle bc ↔ files
-          this.browserViewMode = this.browserViewMode === 'bc' ? 'files' : 'bc';
-          if (this.browserViewMode === 'files') this.folderStack = [];
+          // Pressing browse while already in browser: always return to BC view at
+          // the active note. File-system mode is toggled via the more-options menu.
+          const bc = this.getBc();
+          const activeFile = this.app.workspace.getActiveFile();
+          this.browserViewMode = 'bc';
+          this.initBrowserStack(activeFile, bc);
           void this.refresh();
         } else if (mode === 'recent' && this.mode === 'recent') {
           // Toggle global ↔ local
@@ -1131,6 +1134,13 @@ export class NavigatorView extends ItemView {
           }
           this.applyMode(mode);
         }
+      },
+
+      toggleFileBrowser: () => {
+        if (this.mode !== 'browser') return;
+        this.browserViewMode = this.browserViewMode === 'bc' ? 'files' : 'bc';
+        if (this.browserViewMode === 'files') this.folderStack = [];
+        void this.refresh();
       },
 
       goToActive: () => {
