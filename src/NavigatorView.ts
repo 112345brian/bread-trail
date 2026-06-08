@@ -98,12 +98,13 @@ export class NavigatorView extends ItemView {
   getIcon()        { return 'footprints'; }
 
   async onOpen() {
-    // If the navigator was persisted in browser mode, initialize the browser
-    // stack now — the constructor doesn't have access to the vault yet (BC graph
-    // is also not ready), but by the time onOpen fires both are available.
+    // If the navigator was persisted in browser mode, seed the BC browser stack
+    // so cold-start respects homeNote / navigatorBrowseStart.
+    // IMPORTANT: sub-mode (browserViewMode) is NOT persisted and must always
+    // reset to 'bc' on cold start — never call initBrowserStack() here because
+    // it can switch to 'files' mode when homeNote is a folder path.
     if (this.mode === 'browser') {
-      const activeFile = this.app.workspace.getActiveFile();
-      this.initBrowserStack(activeFile, this.getBc());
+      this.initBrowserStackBcOnly(this.app.workspace.getActiveFile(), this.getBc());
     }
 
     this.registerEvent(
@@ -1343,6 +1344,39 @@ export class NavigatorView extends ItemView {
 
   private getBrowserContainerForActiveFile(activeFile: TFile, bc: BreadcrumbsPlugin | null): TFile {
     return (bc ? this.getFirstParentFile(activeFile, bc) : null) ?? activeFile;
+  }
+
+  /**
+   * Cold-start-safe stack seeder: sets `browserStack` only, never touches
+   * `browserViewMode`. Called from `onOpen()` where sub-mode must stay 'bc'.
+   * Full `initBrowserStack` (which can switch to 'files') is only for active
+   * mode transitions triggered by user interaction.
+   */
+  private initBrowserStackBcOnly(activeFile: TFile | null, bc: BreadcrumbsPlugin | null) {
+    const homePath = this.settings.homeNote;
+    if (homePath) {
+      const resolved = this.app.vault.getAbstractFileByPath(homePath) ?? null;
+      if (resolved instanceof TFile) {
+        this.browserStack = [resolved];
+        return;
+      }
+      if (resolved instanceof TFolder) {
+        // Folder homeNote: leave stack empty (vault roots) in BC mode.
+        // The file-browser sub-mode is not persisted, so don't switch to it.
+        this.browserStack = [];
+        return;
+      }
+      // Basename fallback — only if unambiguous
+      const byName = this.app.vault.getMarkdownFiles().filter((x) => x.basename === homePath);
+      if (byName.length === 1) { this.browserStack = [byName[0]!]; return; }
+    }
+    if (this.settings.navigatorBrowseStart === 'roots') {
+      this.browserStack = [];
+      return;
+    }
+    if (activeFile && bc) {
+      this.browserStack = [this.getBrowserContainerForActiveFile(activeFile, bc)];
+    }
   }
 
   private initBrowserStack(
