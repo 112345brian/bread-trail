@@ -145,46 +145,83 @@ interface TileProps {
 function Tile({ file, isFolder, isActive, label, onTap, onLongPress, doubleTapToOpen, meta }: TileProps) {
   const longPressTimer = useRef<number | null>(null);
   const singleTapTimer = useRef<number | null>(null);
-  const didLongPress   = useRef(false);
-  const lastTapAt      = useRef<number>(0);
+  const longPressFired = useRef(false);
+  const lastTouchEndAt = useRef(0);
+  const touchOrigin    = useRef<{ x: number; y: number } | null>(null);
+  const touchHandled   = useRef(false); // suppress the synthetic click after a touch tap
 
-  const cancelLongPress = () => {
+  const clearLongPress = () => {
     if (longPressTimer.current !== null) { window.clearTimeout(longPressTimer.current); longPressTimer.current = null; }
   };
 
-  const handleTouchStart = () => {
+  const handleTouchStart = (e: TouchEvent) => {
+    const t = e.touches[0];
+    touchOrigin.current = t ? { x: t.clientX, y: t.clientY } : null;
+    longPressFired.current = false;
+    touchHandled.current   = false;
+
     if (!onLongPress) return;
-    didLongPress.current = false;
     longPressTimer.current = window.setTimeout(() => {
-      didLongPress.current = true;
+      longPressTimer.current = null;
+      longPressFired.current = true;
       onLongPress();
     }, 500);
   };
 
-  const handleClick = () => {
-    if (didLongPress.current) return; // long-press already handled — suppress click
+  // Only cancel long-press if the finger has actually moved (>10 px).
+  // Ignoring micro-jitter prevents the press from being killed by a stationary hold.
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!touchOrigin.current) return;
+    const t = e.touches[0];
+    if (!t) { clearLongPress(); return; }
+    const d = Math.hypot(t.clientX - touchOrigin.current.x, t.clientY - touchOrigin.current.y);
+    if (d > 10) { clearLongPress(); touchOrigin.current = null; }
+  };
 
-    // Double-tap mode: folder tiles use double-tap to open, single-tap to drill in.
-    // Non-folder tiles always open immediately.
+  const handleTouchEnd = () => {
+    clearLongPress();
+    if (longPressFired.current) return; // already acted via long-press
+
+    touchHandled.current = true; // tell onClick to skip — we handle it here
+
     if (doubleTapToOpen && onLongPress) {
       const now = Date.now();
-      const gap = now - lastTapAt.current;
-      lastTapAt.current = now;
+      const gap = now - lastTouchEndAt.current;
+      lastTouchEndAt.current = now;
 
-      if (gap < 300) {
-        // Second tap within window → open the note directly
-        if (singleTapTimer.current !== null) {
-          window.clearTimeout(singleTapTimer.current);
-          singleTapTimer.current = null;
-        }
+      if (gap > 0 && gap < 300) {
+        // Double-tap: cancel pending single-tap drill, open the note
+        if (singleTapTimer.current !== null) { window.clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
+        lastTouchEndAt.current = 0; // reset so a third tap doesn't re-trigger
         onLongPress();
       } else {
-        // First tap — wait to see if a second follows before drilling in
+        // Single tap: wait to see if a second follows before drilling in
         if (singleTapTimer.current !== null) window.clearTimeout(singleTapTimer.current);
-        singleTapTimer.current = window.setTimeout(() => {
-          singleTapTimer.current = null;
-          onTap();
-        }, 300);
+        singleTapTimer.current = window.setTimeout(() => { singleTapTimer.current = null; onTap(); }, 300);
+      }
+      return;
+    }
+
+    onTap();
+  };
+
+  // Desktop (mouse) path — touch interactions are handled in handleTouchEnd above.
+  const handleClick = () => {
+    if (touchHandled.current) { touchHandled.current = false; return; }
+    if (longPressFired.current) { longPressFired.current = false; return; }
+
+    if (doubleTapToOpen && onLongPress) {
+      const now = Date.now();
+      const gap = now - lastTouchEndAt.current;
+      lastTouchEndAt.current = now;
+
+      if (gap > 0 && gap < 300) {
+        if (singleTapTimer.current !== null) { window.clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
+        lastTouchEndAt.current = 0;
+        onLongPress();
+      } else {
+        if (singleTapTimer.current !== null) window.clearTimeout(singleTapTimer.current);
+        singleTapTimer.current = window.setTimeout(() => { singleTapTimer.current = null; onTap(); }, 300);
       }
       return;
     }
@@ -197,8 +234,8 @@ function Tile({ file, isFolder, isActive, label, onTap, onLongPress, doubleTapTo
       class={`bt-explorer-tile${isFolder ? ' is-folder' : ''}${isActive ? ' is-active' : ''}`}
       onClick={handleClick}
       onTouchStart={handleTouchStart}
-      onTouchEnd={cancelLongPress}
-      onTouchMove={cancelLongPress}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
       title={file.basename}
     >
       <div class="bt-explorer-tile-icon">
