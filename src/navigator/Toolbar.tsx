@@ -108,7 +108,7 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
         )}
       </div>
 
-      {(vis.goToActive || vis.reset) && (
+      {vis.goToActive && (
         <ActionBtn
           icon={isBrowser && atActive ? 'rotate-ccw' : 'crosshair'}
           label={isBrowser && atActive ? 'Reset browser to start' : 'Go to active note'}

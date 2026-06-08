@@ -11,6 +11,8 @@ import { SequenceModal, SequenceAllModal, RemoveStaleModal } from './SequenceMod
 import { Sequencer, parseLinkChildrenConfig, findAllConfiguredParents } from './Sequencer';
 import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
+import { getHomepageTargetForFile, resolveHomepageTarget } from './homepageUtils';
+import type { HomepageTarget } from './homepageUtils';
 
 export interface BreadcrumbEdge {
   source?: string;
@@ -49,8 +51,6 @@ interface AppWithSettings extends App {
     openTabById(id: string): void;
   };
 }
-
-type HomepageTarget = { kind: 'folder'; path: string } | { kind: 'file'; file: TFile };
 
 function getBreadcrumbs(app: App): BreadcrumbsPlugin | null {
   const plugins = (app as AppWithPlugins).plugins;
@@ -104,57 +104,6 @@ class BreadcrumbsMissingModal extends Modal {
   }
 }
 
-class TrailModal extends Modal {
-  constructor(
-    app: App,
-    private file: TFile,
-    private bc: BreadcrumbsPlugin
-  ) {
-    super(app);
-  }
-
-  onOpen() {
-    const { contentEl, titleEl } = this;
-    titleEl.setText('Breadtrail');
-
-    contentEl.createEl('p', {
-      text: `Viewing: ${this.file.basename}`,
-      cls: 'mod-muted',
-    });
-
-    const outgoing = this.bc.graph.get_outgoing_edges(this.file.path).to_array();
-    const incoming = this.bc.graph.get_incoming_edges(this.file.path).to_array();
-
-    if (incoming.length > 0) {
-      contentEl.createEl('h3', { text: '↑ parents' });
-      const list = contentEl.createEl('ul');
-      incoming.forEach((edge) => {
-        const sourcePath = edge.source_path?.(this.bc.graph) ?? edge.source;
-        if (sourcePath) {
-          list.createEl('li', { text: sourcePath });
-        }
-      });
-    }
-
-    if (outgoing.length > 0) {
-      contentEl.createEl('h3', { text: '↓ children' });
-      const list = contentEl.createEl('ul');
-      outgoing.forEach((edge) => {
-        const targetPath = edge.target_path?.(this.bc.graph) ?? edge.target;
-        if (targetPath) {
-          list.createEl('li', { text: targetPath });
-        }
-      });
-    }
-
-    if (incoming.length === 0 && outgoing.length === 0) {
-      contentEl.createEl('p', {
-        text: 'No breadcrumb relationships found for this note.',
-        cls: 'mod-muted',
-      });
-    }
-  }
-}
 
 export default class BreadTrail extends Plugin {
   private bc: BreadcrumbsPlugin | null = null;
@@ -194,25 +143,6 @@ export default class BreadTrail extends Plugin {
       if (Platform.isMobile) {
         await this.openNavigatorInSidebar(this.settings.mobileNavigatorSide);
       }
-    });
-
-    this.addCommand({
-      id: 'show-trail',
-      name: 'Show trail for current note',
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        if (checking) return !!file && file.extension === 'md';
-        if (!file) return false;
-
-        const bc = this.ensureBreadcrumbs();
-        if (!bc) {
-          new BreadcrumbsMissingModal(this.app).open();
-          return true;
-        }
-
-        new TrailModal(this.app, file, bc).open();
-        return true;
-      },
     });
 
     this.addCommand({
@@ -419,7 +349,7 @@ export default class BreadTrail extends Plugin {
     if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
     const activeFile = this.app.workspace.getActiveFile();
     const homepageTarget = startFile === undefined && rootFolder === undefined
-      ? this.getHomepageTargetForFile(activeFile)
+      ? getHomepageTargetForFile(activeFile, this.app, this.settings)
       : null;
     const effectiveStartFile = homepageTarget?.kind === 'file'
       ? homepageTarget.file
@@ -427,12 +357,11 @@ export default class BreadTrail extends Plugin {
         ? null
         : startFile;
     const effectiveRootFolder = rootFolder ?? (homepageTarget?.kind === 'folder' ? homepageTarget.path : undefined);
-    // homeNote unifies the start for both sidebar and modal; fall back to per-modal setting
     const effectiveStartMode = effectiveRootFolder
       ? 'roots'
       : (this.settings.homeNote && effectiveStartFile === undefined)
-      ? 'home' : this.settings.explorerStartMode;
-    const effectiveHomeNote = this.settings.homeNote || this.settings.explorerHomeNote;
+      ? 'home' : 'active-parent';
+    const effectiveHomeNote = this.settings.homeNote;
     const modal = new ExplorerModal(
       this.app, bc,
       this.settings.explorerTileMinWidth,
@@ -450,48 +379,6 @@ export default class BreadTrail extends Plugin {
     );
     this.activeExplorerModal = modal;
     modal.open();
-  }
-
-  private resolveConfiguredHomepageFile(): TFile | null {
-    const configured = this.settings.homepageNote;
-    if (configured) {
-      const direct = this.app.vault.getAbstractFileByPath(configured) ??
-        this.app.vault.getAbstractFileByPath(configured + '.md');
-      if (direct instanceof TFile) return direct;
-      return this.app.vault.getMarkdownFiles()
-        .find((file) => file.basename === configured || file.path === configured) ?? null;
-    }
-    return this.app.vault.getMarkdownFiles().find((file) => {
-      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
-      if (!frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) return false;
-      const cssclasses = (frontmatter as Record<string, unknown>)['cssclasses'];
-      return Array.isArray(cssclasses)
-        ? cssclasses.some((value) => String(value).toLowerCase() === 'homepage')
-        : typeof cssclasses === 'string' && cssclasses.toLowerCase() === 'homepage';
-    }) ?? null;
-  }
-
-  private isHomepageFile(file: TFile | null): boolean {
-    const homepage = this.resolveConfiguredHomepageFile();
-    return !!file && !!homepage && file.path === homepage.path;
-  }
-
-  private getHomepageTargetForFile(file: TFile | null): HomepageTarget | null {
-    if (!this.isHomepageFile(file)) return null;
-    return this.resolveHomepageTarget();
-  }
-
-  private resolveHomepageTarget(): HomepageTarget | null {
-    const target = this.settings.homepageTarget.trim();
-    if (!target) return null;
-    const direct = this.app.vault.getAbstractFileByPath(target) ??
-      this.app.vault.getAbstractFileByPath(target + '.md');
-    if (direct instanceof TFile) return { kind: 'file', file: direct };
-    if (direct) return { kind: 'folder', path: direct.path };
-    const file = this.app.vault.getMarkdownFiles()
-      .find((candidate) => candidate.basename === target || candidate.path === target);
-    if (file) return { kind: 'file', file };
-    return { kind: 'folder', path: target.replace(/^\/+|\/+$/g, '') };
   }
 
   private getFirstParentFile(file: TFile, bc: BreadcrumbsPlugin): TFile | null {
@@ -569,7 +456,7 @@ export default class BreadTrail extends Plugin {
       } else {
         // 'parent': open at the active note's BC parent — shows its siblings
         const activeFile = this.app.workspace.getActiveFile();
-        const homepageTarget = this.getHomepageTargetForFile(activeFile);
+        const homepageTarget = getHomepageTargetForFile(activeFile, this.app, this.settings);
         if (homepageTarget?.kind === 'folder') {
           this.openExplorerModal(null, homepageTarget.path);
           return;
@@ -651,14 +538,14 @@ export default class BreadTrail extends Plugin {
     const prev = this.bc;
     this.bc = getBreadcrumbs(this.app);
     // Only run first-time setup when BC transitions from absent → present
-    if (this.bc && !prev) this.handleBreadcrumbsReady(this.bc, false);
+    if (this.bc && !prev) this.handleBreadcrumbsReady(this.bc);
     return this.bc;
   }
 
   private checkBreadcrumbsOnStartup(attempt = 0): void {
     const bc = this.ensureBreadcrumbs();
     if (bc) {
-      this.handleBreadcrumbsReady(bc, this.settings.showStartupNotice);
+      this.handleBreadcrumbsReady(bc);
       return;
     }
 
@@ -672,7 +559,7 @@ export default class BreadTrail extends Plugin {
     new BreadcrumbsMissingModal(this.app).open();
   }
 
-  private handleBreadcrumbsReady(bc: BreadcrumbsPlugin, _showNotice: boolean): void {
+  private handleBreadcrumbsReady(bc: BreadcrumbsPlugin): void {
     this.getNavigatorView()?.scheduleRefresh();
     this.updateAllHeaderBreadcrumbs();
 

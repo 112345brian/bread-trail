@@ -53,7 +53,6 @@ export interface BreadTrailSettings {
   graphSingleClickOpens: boolean;
   graphNodeSortOrder: 'alphabetical' | 'importance';
   graphShowPreview: boolean;
-  showStartupNotice: boolean;
   pathColors: Record<string, string>;
   validationRules: ValidationRules;
   /** Format used when writing NEW sequence links. 'flat' = next.journal: [[X]];
@@ -79,21 +78,17 @@ export interface BreadTrailSettings {
     browse: boolean;
     recent: boolean;
     favorites: boolean;
-    preview: boolean;
-    reset: boolean;
     goToActive: boolean;
   };
   /** Home note — the anchor the sidebar browser and explorer modal start from.
-   *  When set, overrides navigatorBrowseStart / explorerStartMode. */
+   *  When set, overrides navigatorBrowseStart. */
   homeNote: string;
   /** Dashboard/shell note that should browse from homepageTarget instead of its own BC parent. */
   homepageNote: string;
   /** Folder or note to show when the active note is the homepage. */
   homepageTarget: string;
   /** What the browse view starts from. */
-  navigatorBrowseStart: 'active' | 'note' | 'roots';
-  /** File path of the start note when navigatorBrowseStart is 'note'. */
-  navigatorBrowseStartNote: string;
+  navigatorBrowseStart: 'active' | 'roots';
   /** Frontmatter properties to show as metadata lines in each navigator card. */
   navigatorMetaProperties: string[];
   /** Frontmatter field to sort by when sort mode is 'field'. */
@@ -139,10 +134,6 @@ export interface BreadTrailSettings {
   navigatorLayoutMode: 'list' | 'grid-small' | 'grid-large';
   /** Minimum tile width (px) in the tile explorer grid. Smaller = more columns. */
   explorerTileMinWidth: number;
-  /** Where the tile explorer opens: active note's parent, a fixed home note, or vault roots. */
-  explorerStartMode: 'active-parent' | 'home' | 'roots';
-  /** File path of the home note when explorerStartMode is 'home'. */
-  explorerHomeNote: string;
   /** Folder paths whose contents are hidden from the navigator (prefix match). */
   navigatorExcludeFolders: string[];
   /** Exact file paths to hide from the navigator. */
@@ -184,7 +175,6 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   graphSingleClickOpens: false,
   graphNodeSortOrder: 'alphabetical',
   graphShowPreview: false,
-  showStartupNotice: true,
   pathColors: {},
   validationRules: DEFAULT_VALIDATION_RULES,
   sequenceLinkFormat: 'flat',
@@ -200,15 +190,12 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
     browse: true,
     recent: true,
     favorites: true,
-    preview: true,
-    reset: true,
     goToActive: true,
   },
   homeNote: '',
   homepageNote: '',
-  homepageTarget: 'ARCHIVE',
+  homepageTarget: '',
   navigatorBrowseStart: 'active',
-  navigatorBrowseStartNote: '',
   navigatorMetaProperties: [],
   navigatorSortField: '',
   floatingNavLeft: false,
@@ -230,8 +217,6 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   navigatorPreviewLines: 3,
   navigatorLayoutMode: 'grid-large',
   explorerTileMinWidth: 90,
-  explorerStartMode: 'active-parent',
-  explorerHomeNote: '',
   navigatorExcludeFolders: [],
   navigatorExcludeFiles: [],
   navigatorExcludeFrontmatter: [],
@@ -301,7 +286,6 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     graphSingleClickOpens: typeof settings.graphSingleClickOpens === 'boolean' ? settings.graphSingleClickOpens : DEFAULT_SETTINGS.graphSingleClickOpens,
     graphNodeSortOrder: settings.graphNodeSortOrder === 'importance' ? 'importance' : 'alphabetical',
     graphShowPreview: typeof settings.graphShowPreview === 'boolean' ? settings.graphShowPreview : DEFAULT_SETTINGS.graphShowPreview,
-    showStartupNotice: typeof settings.showStartupNotice === 'boolean' ? settings.showStartupNotice : DEFAULT_SETTINGS.showStartupNotice,
     pathColors: settings.pathColors && typeof settings.pathColors === 'object' ? settings.pathColors : {},
     validationRules: normalizeValidationRules(settings.validationRules),
     sequenceLinkFormat: settings.sequenceLinkFormat === 'nested' ? 'nested' : 'flat',
@@ -322,7 +306,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
         raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>)[key] === 'boolean'
           ? (raw as Record<string, unknown>)[key] as boolean
           : def[key];
-      return { context: b('context'), browse: b('browse'), recent: b('recent'), favorites: b('favorites'), preview: b('preview'), reset: b('reset'), goToActive: b('goToActive') };
+      return { context: b('context'), browse: b('browse'), recent: b('recent'), favorites: b('favorites'), goToActive: b('goToActive') };
     })(),
     homeNote: typeof settings.homeNote === 'string' ? settings.homeNote.trim() : '',
     homepageNote: typeof settings.homepageNote === 'string' ? settings.homepageNote.trim() : '',
@@ -332,11 +316,8 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
         ? (settings as { homepageDirectory: string }).homepageDirectory.trim()
       : typeof (settings as { homepageRootFolder?: unknown }).homepageRootFolder === 'string'
         ? (settings as { homepageRootFolder: string }).homepageRootFolder.trim()
-        : 'ARCHIVE',
-    navigatorBrowseStart: (settings.navigatorBrowseStart === 'note' || settings.navigatorBrowseStart === 'roots')
-      ? settings.navigatorBrowseStart : 'active',
-    navigatorBrowseStartNote: typeof settings.navigatorBrowseStartNote === 'string'
-      ? settings.navigatorBrowseStartNote.trim() : '',
+        : '',
+    navigatorBrowseStart: settings.navigatorBrowseStart === 'roots' ? 'roots' : 'active',
     navigatorMetaProperties: Array.isArray(settings.navigatorMetaProperties)
       ? (settings.navigatorMetaProperties as unknown[]).filter((p): p is string => typeof p === 'string')
       : [],
@@ -364,8 +345,6 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     navigatorPreviewLines: typeof settings.navigatorPreviewLines === 'number' && settings.navigatorPreviewLines > 0 ? Math.floor(settings.navigatorPreviewLines) : 3,
     navigatorLayoutMode: (settings.navigatorLayoutMode === 'list' ? 'list' : settings.navigatorLayoutMode === 'grid-small' ? 'grid-small' : 'grid-large'),
     explorerTileMinWidth: typeof settings.explorerTileMinWidth === 'number' && settings.explorerTileMinWidth >= 60 ? Math.floor(settings.explorerTileMinWidth) : 90,
-    explorerStartMode: ['active-parent', 'home', 'roots'].includes(settings.explorerStartMode as string) ? settings.explorerStartMode as 'active-parent' | 'home' | 'roots' : 'active-parent',
-    explorerHomeNote: typeof settings.explorerHomeNote === 'string' ? settings.explorerHomeNote : '',
     navigatorExcludeFolders: Array.isArray(settings.navigatorExcludeFolders)
       ? (settings.navigatorExcludeFolders as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0).map((s) => s.trim())
       : [],
@@ -475,18 +454,6 @@ class BreadTrailSettingTab extends PluginSettingTab {
     this.depthSetting(el, 'Parent depth', 'Maximum parent levels to traverse.', 'parentDepth');
     this.depthSetting(el, 'Child depth',  'Maximum child levels to traverse.',  'childDepth');
 
-    new Setting(el).setName('Startup').setHeading();
-
-    new Setting(el)
-      .setName('Show startup notice')
-      .setDesc('Show a notice when the breadcrumbs plugin is detected.')
-      .addToggle((t) => {
-        t.setValue(this.plugin.settings.showStartupNotice);
-        t.onChange(async (v) => {
-          this.plugin.settings.showStartupNotice = v;
-          await this.save();
-        });
-      });
   }
 
   // ── Graph ─────────────────────────────────────────────────────────────────
@@ -690,32 +657,6 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     // ── Tile explorer ─────────────────────────────────────────────────────
     new Setting(el).setName('Tile explorer').setHeading();
-
-    new Setting(el)
-      .setName('Opening position')
-      .setDesc('Where the explorer starts when you open it.')
-      .addDropdown((d) => {
-        d.addOption('active-parent', 'Active note\'s parent');
-        d.addOption('home', 'Home note');
-        d.addOption('roots', 'Vault roots');
-        d.setValue(this.plugin.settings.explorerStartMode);
-        d.onChange(async (v: string) => {
-          this.plugin.settings.explorerStartMode = v as 'active-parent' | 'home' | 'roots';
-          await this.save();
-          this.display();
-        });
-      });
-
-    if (this.plugin.settings.explorerStartMode === 'home') {
-      new Setting(el)
-        .setName('Home note')
-        .setDesc('The note to start from. The explorer will show its children.')
-        .addText((t) => {
-          t.setPlaceholder('E.g. Meta/index');
-          t.setValue(this.plugin.settings.explorerHomeNote);
-          t.onChange(async (v) => { this.plugin.settings.explorerHomeNote = v.trim(); await this.save(); });
-        });
-    }
 
     new Setting(el)
       .setName('Double-tap to open note')
@@ -944,7 +885,6 @@ class BreadTrailSettingTab extends PluginSettingTab {
         { key: 'browse',     name: 'Browse mode',       desc: 'Show the Browse button (folder drill-down view).' },
         { key: 'recent',     name: 'Recent mode',       desc: 'Show the Recent button (recently modified notes).' },
         { key: 'favorites',  name: 'Favorites mode',    desc: 'Show the Favorites / Pinboard button.' },
-        { key: 'reset',      name: 'Reset browser',     desc: 'Show the button that resets the browse view to its configured start.' },
         { key: 'goToActive', name: 'Go to active note', desc: 'Show the button that jumps the browse view to the currently open note.' },
       ];
 
@@ -1004,35 +944,6 @@ class BreadTrailSettingTab extends PluginSettingTab {
           t.setValue(this.plugin.settings.navigatorGroupByNormalizeLinks);
           t.onChange(async (v) => { this.plugin.settings.navigatorGroupByNormalizeLinks = v; await this.save(); });
         });
-
-      // ── Browse mode ───────────────────────────────────────────────────────
-      new Setting(el).setName('Browse mode').setHeading();
-
-      new Setting(el)
-        .setName('Start view')
-        .setDesc('What the browse view shows when you first open it.')
-        .addDropdown((d) => {
-          d.addOption('active', 'Parent of active note');
-          d.addOption('note',   'Specific note');
-          d.addOption('roots',  'Vault roots (top of hierarchy)');
-          d.setValue(this.plugin.settings.navigatorBrowseStart);
-          d.onChange(async (v) => {
-            this.plugin.settings.navigatorBrowseStart = v as 'active' | 'note' | 'roots';
-            await this.save();
-            this.display();
-          });
-        });
-
-      if (this.plugin.settings.navigatorBrowseStart === 'note') {
-        new Setting(el)
-          .setName('Start note path')
-          .setDesc('Path to the note browse opens at. Example: Journal/Index.md')
-          .addText((t) => {
-            t.setPlaceholder('Journal/Index.md');
-            t.setValue(this.plugin.settings.navigatorBrowseStartNote);
-            t.onChange(async (v) => { this.plugin.settings.navigatorBrowseStartNote = v.trim(); await this.save(); });
-          });
-      }
 
       // ── Home view ─────────────────────────────────────────────────────────
       new Setting(el).setName('Home view').setHeading();

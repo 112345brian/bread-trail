@@ -46,7 +46,7 @@ export interface ToolbarData {
   mode: NavMode;
   vis: {
     context: boolean; browse: boolean; recent: boolean; favorites: boolean;
-    goToActive: boolean; reset: boolean; preview: boolean;
+    goToActive: boolean;
   };
   previewExpanded: boolean;
   /** True when the browser is already positioned at the active note (→ shows reset icon). */

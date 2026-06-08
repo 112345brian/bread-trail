@@ -10,6 +10,8 @@ import type {
 import { NavigatorApp } from './navigator/App';
 import { extractContentSnippet, extractFirstImageLink, formatDateValue, startsWithBaseTransclusion } from './utils';
 import { shouldIncludeVaultRoot } from './homepageRoots';
+import { getHomepageTargetForFile } from './homepageUtils';
+import type { HomepageTarget } from './homepageUtils';
 
 export const NAVIGATOR_VIEW_TYPE = 'bread-trail-navigator';
 
@@ -26,8 +28,6 @@ interface NavNote {
   seqPos?: number;
   seqTotal?: number;
 }
-
-type HomepageTarget = { kind: 'folder'; path: string } | { kind: 'file'; file: TFile };
 
 // ── View ──────────────────────────────────────────────────────────────────────
 
@@ -319,8 +319,6 @@ export class NavigatorView extends ItemView {
         recent: vis.recent,
         favorites: vis.favorites,
         goToActive: vis.goToActive,
-        reset: vis.reset,
-        preview: vis.preview,
       },
       previewExpanded: this.previewExpanded,
       atActive,
@@ -1114,7 +1112,7 @@ export class NavigatorView extends ItemView {
         if (atActive) {
           this.initBrowserStack(file, bc);
         } else {
-          if (file && this.getHomepageTargetForFile(file)) {
+          if (file && getHomepageTargetForFile(file, this.app, this.settings)) {
             this.initBrowserStack(file, bc);
           } else if (file && bc) {
             this.browserRootFolder = null;
@@ -1264,7 +1262,7 @@ export class NavigatorView extends ItemView {
 
   private isBrowserAtActiveNote(activeFile: TFile | null, bc: BreadcrumbsPlugin | null): boolean {
     if (!activeFile || this.browserViewMode === 'files') return false;
-    const homepageTarget = this.getHomepageTargetForFile(activeFile);
+    const homepageTarget = getHomepageTargetForFile(activeFile, this.app, this.settings);
     if (homepageTarget?.kind === 'folder') {
       return this.browserStack.length === 0 && this.browserRootFolder === homepageTarget.path;
     }
@@ -1282,47 +1280,8 @@ export class NavigatorView extends ItemView {
     return (bc ? this.getFirstParentFile(activeFile, bc) : null) ?? activeFile;
   }
 
-  private resolveHomepageFile(): TFile | null {
-    const configured = this.settings.homepageNote.trim();
-    if (configured) {
-      const direct = this.app.vault.getAbstractFileByPath(configured) ??
-        this.app.vault.getAbstractFileByPath(configured + '.md');
-      if (direct instanceof TFile) return direct;
-      return this.app.vault.getMarkdownFiles()
-        .find((file) => file.basename === configured || file.path === configured) ?? null;
-    }
-    return this.app.vault.getMarkdownFiles().find((file) => {
-      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
-      if (!frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) return false;
-      const cssclasses = (frontmatter as Record<string, unknown>)['cssclasses'];
-      return Array.isArray(cssclasses)
-        ? cssclasses.some((value) => String(value).toLowerCase() === 'homepage')
-        : typeof cssclasses === 'string' && cssclasses.toLowerCase() === 'homepage';
-    }) ?? null;
-  }
-
-  private getHomepageTargetForFile(file: TFile | null): HomepageTarget | null {
-    if (!file) return null;
-    const homepage = this.resolveHomepageFile();
-    if (!homepage || homepage.path !== file.path) return null;
-    return this.resolveHomepageTarget();
-  }
-
-  private resolveHomepageTarget(): HomepageTarget | null {
-    const target = this.settings.homepageTarget.trim();
-    if (!target) return null;
-    const direct = this.app.vault.getAbstractFileByPath(target) ??
-      this.app.vault.getAbstractFileByPath(target + '.md');
-    if (direct instanceof TFile) return { kind: 'file', file: direct };
-    if (direct instanceof TFolder) return { kind: 'folder', path: direct.path };
-    const file = this.app.vault.getMarkdownFiles()
-      .find((candidate) => candidate.basename === target || candidate.path === target);
-    if (file) return { kind: 'file', file };
-    return { kind: 'folder', path: target.replace(/^\/+|\/+$/g, '') };
-  }
-
   private initBrowserStack(activeFile: TFile | null, bc: BreadcrumbsPlugin | null) {
-    const homepageTarget = this.getHomepageTargetForFile(activeFile);
+    const homepageTarget = getHomepageTargetForFile(activeFile, this.app, this.settings);
     if (homepageTarget?.kind === 'folder') {
       this.browserViewMode = 'bc';
       this.browserRootFolder = homepageTarget.path;
@@ -1358,17 +1317,9 @@ export class NavigatorView extends ItemView {
       const byName = this.app.vault.getMarkdownFiles().find((x) => x.basename === homePath || x.path === homePath);
       if (byName) { this.browserStack = [byName]; return; }
     }
-    const start = this.settings.navigatorBrowseStart;
-    if (start === 'roots') {
+    if (this.settings.navigatorBrowseStart === 'roots') {
       this.browserStack = [];
       return;
-    }
-    if (start === 'note') {
-      const notePath = this.settings.navigatorBrowseStartNote;
-      if (notePath) {
-        const f = this.app.vault.getAbstractFileByPath(notePath);
-        if (f instanceof TFile) { this.browserStack = [f]; return; }
-      }
     }
     if (activeFile && bc) {
       this.browserStack = [this.getBrowserContainerForActiveFile(activeFile, bc)];
