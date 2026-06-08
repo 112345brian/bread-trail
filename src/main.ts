@@ -437,6 +437,21 @@ export default class BreadTrail extends Plugin {
     modal.open();
   }
 
+  private resolveConfiguredHomeFile(): TFile | null {
+    const homePath = this.settings.homeNote || this.settings.explorerHomeNote;
+    if (!homePath) return null;
+    const direct = this.app.vault.getAbstractFileByPath(homePath) ??
+      this.app.vault.getAbstractFileByPath(homePath + '.md');
+    if (direct instanceof TFile) return direct;
+    return this.app.vault.getMarkdownFiles()
+      .find((file) => file.basename === homePath || file.path === homePath) ?? null;
+  }
+
+  private isConfiguredHomeFile(file: TFile | null): boolean {
+    const home = this.resolveConfiguredHomeFile();
+    return !!file && !!home && file.path === home.path;
+  }
+
   /** On mobile: two-finger gestures anywhere on screen navigate the tile explorer.
    *  Spread (expand) = go deeper into the active note's children.
    *  Pinch (contract) = go up to the active note's parent level.
@@ -496,7 +511,9 @@ export default class BreadTrail extends Plugin {
         const activeFile = this.app.workspace.getActiveFile();
         const bc = this.ensureBreadcrumbs();
         let parent: TFile | null = null;
-        if (activeFile && bc) {
+        if (activeFile && this.isConfiguredHomeFile(activeFile)) {
+          parent = activeFile;
+        } else if (activeFile && bc) {
           for (const e of bc.graph.get_outgoing_edges(activeFile.path).to_array()) {
             if (e.edge_type?.toLowerCase() !== 'up') continue;
             const path = e.target_path?.(bc.graph) ?? e.target;
