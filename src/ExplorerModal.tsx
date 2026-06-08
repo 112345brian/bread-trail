@@ -2,6 +2,7 @@ import { App, Modal, Menu, TFile, setIcon } from 'obsidian';
 import { render, h } from 'preact';
 import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
 import type { BreadcrumbsPlugin } from './main';
+import { shouldIncludeVaultRoot } from './homepageRoots';
 
 // ── BC graph helpers (self-contained so we don't depend on NavigatorView) ─────
 
@@ -34,11 +35,6 @@ function hasChildren(file: TFile, bc: BreadcrumbsPlugin): boolean {
   return false;
 }
 
-function isInFolder(file: TFile, folderPath: string): boolean {
-  const folder = folderPath.trim().replace(/^\/+|\/+$/g, '');
-  return !folder || file.path.startsWith(folder + '/');
-}
-
 function hasParent(file: TFile, bc: BreadcrumbsPlugin): boolean {
   return bc.graph.get_outgoing_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'up') ||
     bc.graph.get_incoming_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'down');
@@ -47,9 +43,11 @@ function hasParent(file: TFile, bc: BreadcrumbsPlugin): boolean {
 function getVaultRoots(bc: BreadcrumbsPlugin, app: App, rootFolder = ''): TFile[] {
   const roots: TFile[] = [];
   for (const file of app.vault.getMarkdownFiles()) {
-    if (!isInFolder(file, rootFolder)) continue;
-    if (!rootFolder && !hasChildren(file, bc)) continue;
-    if (!hasParent(file, bc)) roots.push(file);
+    if (shouldIncludeVaultRoot({
+      path: file.path,
+      hasChildren: hasChildren(file, bc),
+      hasParent: hasParent(file, bc),
+    }, rootFolder)) roots.push(file);
   }
   return roots.sort((a, b) => a.basename.localeCompare(b.basename));
 }

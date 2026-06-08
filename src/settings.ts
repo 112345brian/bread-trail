@@ -583,7 +583,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Home')
-      .setDesc('Folder or index note the sidebar browser starts from. When the active note is the homepage, bread trail shows this note instead.')
+      .setDesc('Default folder or index note for the sidebar browser. Use homepage note and homepage target to override what appears while viewing your homepage.')
       .addText((t) => {
         t.setPlaceholder('TOC/index.md');
         t.setValue(this.plugin.settings.homeNote);

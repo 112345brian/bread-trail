@@ -9,6 +9,7 @@ import type {
 } from './navigator/types';
 import { NavigatorApp } from './navigator/App';
 import { extractContentSnippet, extractFirstImageLink, formatDateValue, startsWithBaseTransclusion } from './utils';
+import { shouldIncludeVaultRoot } from './homepageRoots';
 
 export const NAVIGATOR_VIEW_TYPE = 'bread-trail-navigator';
 
@@ -293,7 +294,7 @@ export class NavigatorView extends ItemView {
         browserIsRoots = isRootsView && this.followTargets.length === 0;
         browserTitle = this.followTargets.length > 0
           ? this.followTargets.map((t) => this.getLabel(t)).join(', ')
-          : isRootsView ? 'Vault' : (currentFolder ? this.getLabel(currentFolder) : '');
+          : isRootsView ? (this.browserRootFolder ?? 'Vault') : (currentFolder ? this.getLabel(currentFolder) : '');
         const canGoUp = !isRootsView && (
           this.browserStack.length > 1 ||
           this.browserRootFolder !== null ||
@@ -1113,7 +1114,10 @@ export class NavigatorView extends ItemView {
         if (atActive) {
           this.initBrowserStack(file, bc);
         } else {
-          if (file && bc) {
+          if (file && this.getHomepageTargetForFile(file)) {
+            this.initBrowserStack(file, bc);
+          } else if (file && bc) {
+            this.browserRootFolder = null;
             this.browserStack = [this.getBrowserContainerForActiveFile(file, bc)];
           }
         }
@@ -1147,7 +1151,7 @@ export class NavigatorView extends ItemView {
           this.folderStack.pop();
         } else {
           const currentFolder = this.browserStack[this.browserStack.length - 1];
-          if (this.settings.navigatorBrowseStart === 'roots' && this.browserStack.length === 1) {
+          if ((this.browserRootFolder !== null || this.settings.navigatorBrowseStart === 'roots') && this.browserStack.length === 1) {
             this.browserStack = [];
           } else if (this.browserStack.length > 1) {
             this.browserStack.pop();
@@ -1774,13 +1778,15 @@ export class NavigatorView extends ItemView {
     const folder = rootFolder.trim().replace(/^\/+|\/+$/g, '');
     const roots: TFile[] = [];
     for (const file of this.app.vault.getMarkdownFiles()) {
-      if (this.isExcluded(file)) continue;
-      if (folder && !file.path.startsWith(folder + '/')) continue;
-      if (!folder && !this.hasChildren(file, bc)) continue;
       const hasParent =
         bc.graph.get_outgoing_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'up') ||
         bc.graph.get_incoming_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'down');
-      if (!hasParent) roots.push(file);
+      if (shouldIncludeVaultRoot({
+        path: file.path,
+        hasChildren: this.hasChildren(file, bc),
+        hasParent,
+        excluded: this.isExcluded(file),
+      }, folder)) roots.push(file);
     }
     return roots.sort((a, b) => a.basename.localeCompare(b.basename));
   }
