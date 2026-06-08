@@ -19,7 +19,7 @@
 import { App, MarkdownView, Menu, TFile, setIcon } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
-import { formatDateValue } from './utils';
+import { formatDateValue, isExcluded } from './utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -156,10 +156,12 @@ export class FloatingNavPanel {
     const parents: TFile[] = [];
     const children: TFile[] = [];
 
+    const settings = this.getSettings();
     const add = (path: string | undefined, arr: TFile[]) => {
       if (!path || seen.has(path)) return;
       const f = this.app.vault.getAbstractFileByPath(path);
       if (!(f instanceof TFile)) return;
+      if (isExcluded(f, this.app, settings)) return;
       seen.add(path);
       arr.push(f);
     };

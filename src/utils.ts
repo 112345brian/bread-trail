@@ -1,4 +1,49 @@
+import type { App, TFile } from 'obsidian';
+import type { BreadTrailSettings } from './settings';
+
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'avif']);
+
+/**
+ * Single source of truth for whether a file is hidden from all BreadTrail UI
+ * surfaces (navigator sidebar, floating panels, explorer modal).
+ *
+ * Rules checked (in order):
+ *   1. `bread-trail.hidden: true` in frontmatter
+ *   2. Exact path match in `navigatorExcludeFiles`
+ *   3. Path starts with a prefix in `navigatorExcludeFolders`
+ *   4. A `navigatorExcludeFrontmatter` pattern matches
+ *
+ * Previously duplicated in NavigatorView and ExplorerModal — keep this the
+ * single canonical definition.
+ */
+export function isExcluded(file: TFile, app: App, settings: BreadTrailSettings): boolean {
+  const fm: unknown = app.metadataCache.getFileCache(file)?.frontmatter;
+  const bt = fm && typeof fm === 'object' && !Array.isArray(fm)
+    ? (fm as Record<string, unknown>)['bread-trail']
+    : undefined;
+  if (typeof bt === 'object' && bt !== null && (bt as Record<string, unknown>)['hidden'] === true) return true;
+  if (settings.navigatorExcludeFiles.includes(file.path)) return true;
+  for (const folder of settings.navigatorExcludeFolders) {
+    const prefix = folder.endsWith('/') ? folder : folder + '/';
+    if (file.path.startsWith(prefix)) return true;
+  }
+  if (settings.navigatorExcludeFrontmatter.length > 0) {
+    const frontmatter = fm && typeof fm === 'object' && !Array.isArray(fm) ? fm as Record<string, unknown> : {};
+    for (const pattern of settings.navigatorExcludeFrontmatter) {
+      const colonIdx = pattern.indexOf(':');
+      if (colonIdx === -1) {
+        const val = frontmatter[pattern];
+        if (val !== undefined && val !== null && val !== false && val !== '' && val !== 0) return true;
+      } else {
+        const key = pattern.slice(0, colonIdx).trim();
+        const expected = pattern.slice(colonIdx + 1).trim();
+        const val = frontmatter[key];
+        if ((typeof val === 'string' || typeof val === 'number') && String(val).trim() === expected) return true;
+      }
+    }
+  }
+  return false;
+}
 
 /** Return the raw link text of the first image embed in content, or null. */
 export function extractFirstImageLink(content: string): string | null {

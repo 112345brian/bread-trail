@@ -885,16 +885,20 @@ export default class BreadTrail extends Plugin {
     const autoParents = findAllConfiguredParents(this.app).filter(({ config }) => config.mode === 'auto');
     if (autoParents.length === 0) return;
 
-    // For each auto parent, check if changedFile is one of its children
+    // For each auto parent, check if changedFile is one of its children (bidirectional)
     const bc = this.bc;
     for (const { file: parent, config } of autoParents) {
-      const edges = bc.graph.get_outgoing_edges(parent.path).to_array();
-      const isChild = edges.some((edge) => {
-        const edgeType = edge.edge_type ?? '';
-        if (edgeType !== 'down' && edgeType !== 'child') return false;
-        const targetPath = edge.target_path?.(bc.graph) ?? edge.target;
-        return targetPath === changedFile.path;
-      });
+      const isChild =
+        bc.graph.get_outgoing_edges(parent.path).to_array().some((edge) => {
+          const edgeType = edge.edge_type?.toLowerCase() ?? '';
+          if (edgeType !== 'down' && edgeType !== 'child') return false;
+          return (edge.target_path?.(bc.graph) ?? edge.target) === changedFile.path;
+        }) ||
+        bc.graph.get_incoming_edges(parent.path).to_array().some((edge) => {
+          const edgeType = edge.edge_type?.toLowerCase() ?? '';
+          if (edgeType !== 'up') return false;
+          return (edge.source_path?.(bc.graph) ?? edge.source) === changedFile.path;
+        });
       if (!isChild) continue;
 
       // Debounce per parent — wait 2s after last change before re-sequencing

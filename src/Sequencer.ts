@@ -300,21 +300,29 @@ export class Sequencer {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  /** Get all direct children of a file via the BC graph. */
+  /** Get all direct children of a file via the BC graph (bidirectional). */
   private getChildren(parent: TFile): TFile[] {
-    const edges = this.bc.graph.get_outgoing_edges(parent.path).to_array();
     const children: TFile[] = [];
     const seen = new Set<string>();
 
-    for (const edge of edges) {
-      const edgeType = edge.edge_type ?? '';
-      if (edgeType !== 'down' && edgeType !== 'child') continue;
-      const targetPath = edge.target_path?.(this.bc.graph) ?? edge.target;
-      if (!targetPath || seen.has(targetPath)) continue;
-      seen.add(targetPath);
-
-      const file = this.app.vault.getAbstractFileByPath(targetPath);
+    const add = (path: string | undefined) => {
+      if (!path || seen.has(path)) return;
+      seen.add(path);
+      const file = this.app.vault.getAbstractFileByPath(path);
       if (file instanceof TFile) children.push(file);
+    };
+
+    // Outgoing `down`/`child` edges: parent → child
+    for (const edge of this.bc.graph.get_outgoing_edges(parent.path).to_array()) {
+      const edgeType = edge.edge_type?.toLowerCase() ?? '';
+      if (edgeType !== 'down' && edgeType !== 'child') continue;
+      add(edge.target_path?.(this.bc.graph) ?? edge.target);
+    }
+    // Incoming `up` edges: child says "my parent is this note"
+    for (const edge of this.bc.graph.get_incoming_edges(parent.path).to_array()) {
+      const edgeType = edge.edge_type?.toLowerCase() ?? '';
+      if (edgeType !== 'up') continue;
+      add(edge.source_path?.(this.bc.graph) ?? edge.source);
     }
     return children;
   }

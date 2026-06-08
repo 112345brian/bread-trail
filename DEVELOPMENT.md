@@ -80,6 +80,13 @@ The follow-mode boolean (`navigatorFollowMode`) is also persisted: set
 `this.settings.navigatorFollowMode = this.followMode` before saving whenever it
 changes.
 
+### Cold-start browser initialization
+
+`browserStack` is **not persisted** — it resets to `[]` on every plugin reload.
+`onOpen()` handles this by calling `initBrowserStack(activeFile, bc)` when
+`this.mode === 'browser'` starts up. Without this, a persisted `browser` mode
+would always start at vault roots rather than `navigatorBrowseStart` / `homeNote`.
+
 ---
 
 ## Navigator state reference (NavigatorView fields)
@@ -160,19 +167,24 @@ cache avoids repeating this within one refresh cycle.
 
 ---
 
-## Exclusion logic lives in two places — keep them in sync
+## Exclusion logic — single source of truth in `utils.ts`
 
-The logic for deciding whether a note is hidden from the navigator is implemented
-in two separate places:
+The logic for deciding whether a note is hidden from all BreadTrail UI surfaces
+lives in one place:
 
-| Location | Form |
-|----------|------|
-| `NavigatorView.isExcluded(file)` | private method, uses `this.settings` and `this.app` |
-| `isExcluded(file, app, settings)` in `ExplorerModal.tsx` | top-level function, same logic |
+```
+isExcluded(file: TFile, app: App, settings: BreadTrailSettings)  →  src/utils.ts
+```
 
-When adding or changing an exclusion rule, update **both**. The rules checked are:
-`bread-trail.hidden: true` in frontmatter, `navigatorExcludeFiles` exact path,
-`navigatorExcludeFolders` prefix, `navigatorExcludeFrontmatter` patterns.
+All three consumers import it from there:
+- `NavigatorView.ts` — sidebar
+- `ExplorerModal.tsx` — tile explorer
+- `FloatingNav.ts` — floating edge panels
+
+When adding or changing an exclusion rule, update **only `utils.ts`**. The rules
+checked are: `bread-trail.hidden: true` in frontmatter, `navigatorExcludeFiles`
+exact path, `navigatorExcludeFolders` prefix, `navigatorExcludeFrontmatter`
+patterns.
 
 ---
 

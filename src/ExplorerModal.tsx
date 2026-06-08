@@ -4,38 +4,9 @@ import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 import { shouldIncludeVaultRoot } from './homepageRoots';
+import { isExcluded } from './utils';
 
-// ── BC graph helpers (self-contained so we don't depend on NavigatorView) ─────
-
-/** Mirror of NavigatorView.isExcluded — keeps the modal consistent with the sidebar. */
-function isExcluded(file: TFile, app: App, settings: BreadTrailSettings): boolean {
-  const fm: unknown = app.metadataCache.getFileCache(file)?.frontmatter;
-  const bt = fm && typeof fm === 'object' && !Array.isArray(fm)
-    ? (fm as Record<string, unknown>)['bread-trail']
-    : undefined;
-  if (typeof bt === 'object' && bt !== null && (bt as Record<string, unknown>)['hidden'] === true) return true;
-  if (settings.navigatorExcludeFiles.includes(file.path)) return true;
-  for (const folder of settings.navigatorExcludeFolders) {
-    const prefix = folder.endsWith('/') ? folder : folder + '/';
-    if (file.path.startsWith(prefix)) return true;
-  }
-  if (settings.navigatorExcludeFrontmatter.length > 0) {
-    const frontmatter = fm && typeof fm === 'object' && !Array.isArray(fm) ? fm as Record<string, unknown> : {};
-    for (const pattern of settings.navigatorExcludeFrontmatter) {
-      const colonIdx = pattern.indexOf(':');
-      if (colonIdx === -1) {
-        const val = frontmatter[pattern];
-        if (val !== undefined && val !== null && val !== false && val !== '' && val !== 0) return true;
-      } else {
-        const key = pattern.slice(0, colonIdx).trim();
-        const expected = pattern.slice(colonIdx + 1).trim();
-        const val = frontmatter[key];
-        if ((typeof val === 'string' || typeof val === 'number') && String(val).trim() === expected) return true;
-      }
-    }
-  }
-  return false;
-}
+// ── BC graph helpers ───────────────────────────────────────────────────────────
 
 function getChildren(file: TFile, bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings): TFile[] {
   const seen = new Set<string>([file.path]);
@@ -115,10 +86,11 @@ function isFavorite(
 
 function getFavorites(
   app: App, bc: BreadcrumbsPlugin, pinnedPaths: string[], parentNotePath: string,
+  settings: BreadTrailSettings,
 ): TFile[] {
   const pinned = new Set(pinnedPaths);
   return app.vault.getMarkdownFiles()
-    .filter((f) => isFavorite(f, app, bc, pinned, parentNotePath))
+    .filter((f) => !isExcluded(f, app, settings) && isFavorite(f, app, bc, pinned, parentNotePath))
     .sort((a, b) => {
       const ai = pinnedPaths.indexOf(a.path);
       const bi = pinnedPaths.indexOf(b.path);
@@ -301,9 +273,9 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
       const f = app.vault.getAbstractFileByPath(homeNote) ??
                 app.vault.getAbstractFileByPath(homeNote + '.md');
       if (f instanceof TFile) return [f];
-      // fallback: try basename match
-      const match = app.vault.getMarkdownFiles().find((x) => x.basename === homeNote || x.path === homeNote);
-      if (match) return [match];
+      // fallback: try basename match (only if unambiguous)
+      const byName = app.vault.getMarkdownFiles().filter((x) => x.basename === homeNote);
+      if (byName.length === 1) return [byName[0]!];
     }
 
     // 'active-parent' (default): start at the parent of the active note
@@ -425,7 +397,7 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
       {/* Home-level extras: Favorites + Recents (only when at the top level) */}
       {/* Home-level extras: Favorites + Recents */}
       {current === null && (() => {
-        const favFiles = showFavorites ? getFavorites(app, bc, favoritePaths, favoritesParentNote) : [];
+        const favFiles = showFavorites ? getFavorites(app, bc, favoritePaths, favoritesParentNote, settings) : [];
         const recentFiles = showRecents ? getRecents(app, recentsCount, settings) : [];
         if (favFiles.length === 0 && recentFiles.length === 0) return null;
         const favMetaProps = settings.navigatorFavoritesMetaProperties;

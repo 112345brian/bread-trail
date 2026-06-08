@@ -8,7 +8,7 @@ import type {
   SortMode, ToolbarData,
 } from './navigator/types';
 import { NavigatorApp } from './navigator/App';
-import { extractContentSnippet, extractFirstImageLink, formatDateValue, startsWithBaseTransclusion } from './utils';
+import { extractContentSnippet, extractFirstImageLink, formatDateValue, isExcluded, startsWithBaseTransclusion } from './utils';
 import { shouldIncludeVaultRoot } from './homepageRoots';
 import { getHomepageTargetForFile } from './homepageUtils';
 import type { HomepageTarget } from './homepageUtils';
@@ -98,6 +98,14 @@ export class NavigatorView extends ItemView {
   getIcon()        { return 'footprints'; }
 
   async onOpen() {
+    // If the navigator was persisted in browser mode, initialize the browser
+    // stack now — the constructor doesn't have access to the vault yet (BC graph
+    // is also not ready), but by the time onOpen fires both are available.
+    if (this.mode === 'browser') {
+      const activeFile = this.app.workspace.getActiveFile();
+      this.initBrowserStack(activeFile, this.getBc());
+    }
+
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => {
         if (this.followMode) this.followActiveFile();
@@ -492,7 +500,7 @@ export class NavigatorView extends ItemView {
           const path = e.target_path?.(bc.graph) ?? e.target;
           if (!path || seen.has(path)) continue;
           const f = this.app.vault.getAbstractFileByPath(path);
-          if (!(f instanceof TFile) || this.isExcluded(f)) continue;
+          if (!(f instanceof TFile) || isExcluded(f, this.app, this.settings)) continue;
           seen.add(path);
           children.push({ file: f, relation: 'child' });
         }
@@ -501,7 +509,7 @@ export class NavigatorView extends ItemView {
           const path = e.source_path?.(bc.graph) ?? e.source;
           if (!path || seen.has(path)) continue;
           const f = this.app.vault.getAbstractFileByPath(path);
-          if (!(f instanceof TFile) || this.isExcluded(f)) continue;
+          if (!(f instanceof TFile) || isExcluded(f, this.app, this.settings)) continue;
           seen.add(path);
           children.push({ file: f, relation: 'child' });
         }
@@ -637,7 +645,7 @@ export class NavigatorView extends ItemView {
 
   private async buildHomeFavoriteCards(activeFile: TFile | null, bc: BreadcrumbsPlugin | null): Promise<CardData[]> {
     const files = this.app.vault.getMarkdownFiles()
-      .filter((f) => !this.isExcluded(f) && this.isFavorite(f, bc));
+      .filter((f) => !isExcluded(f, this.app, this.settings) && this.isFavorite(f, bc));
 
     files.sort((a, b) => {
       const aIdx = this.settings.navigatorFavorites.indexOf(a.path);
@@ -658,7 +666,7 @@ export class NavigatorView extends ItemView {
     const limit = limitOverride ?? this.settings.navigatorHomeRecentsCount;
     const sortField = this.settings.navigatorRecentSortField;
 
-    let files = this.app.vault.getMarkdownFiles().filter((f) => !this.isExcluded(f));
+    let files = this.app.vault.getMarkdownFiles().filter((f) => !isExcluded(f, this.app, this.settings));
 
     if (sortField) {
       files.sort((a, b) => {
@@ -723,7 +731,7 @@ export class NavigatorView extends ItemView {
     const sortField = this.settings.navigatorRecentSortField;
     const limit = this.settings.navigatorRecentLimit;
 
-    let files = this.app.vault.getMarkdownFiles().filter((f) => !this.isExcluded(f));
+    let files = this.app.vault.getMarkdownFiles().filter((f) => !isExcluded(f, this.app, this.settings));
 
     if (this.recentViewMode === 'local' && activeFile && bc) {
       const siblingPaths = this.getSiblingPaths(activeFile, bc);
@@ -897,7 +905,7 @@ export class NavigatorView extends ItemView {
 
   private async buildPinboardFavoritesCards(activeFile: TFile | null, bc: BreadcrumbsPlugin | null): Promise<CardData[]> {
     const files = this.app.vault.getMarkdownFiles()
-      .filter((f) => !this.isExcluded(f) && this.isFavorite(f, bc));
+      .filter((f) => !isExcluded(f, this.app, this.settings) && this.isFavorite(f, bc));
 
     files.sort((a, b) => {
       const ai = this.settings.navigatorFavorites.indexOf(a.path);
@@ -949,7 +957,7 @@ export class NavigatorView extends ItemView {
   private async buildPinboardTagCards(activeFile: TFile | null, tag: string, limit: number): Promise<CardData[]> {
     const bc = this.getBc();
     let files = this.app.vault.getMarkdownFiles()
-      .filter((f) => !this.isExcluded(f) && this.fileHasTag(f, tag));
+      .filter((f) => !isExcluded(f, this.app, this.settings) && this.fileHasTag(f, tag));
     files.sort((a, b) => a.basename.localeCompare(b.basename));
     if (limit > 0) files = files.slice(0, limit);
     return Promise.all(
@@ -964,7 +972,7 @@ export class NavigatorView extends ItemView {
   private async buildPinboardFilterCards(activeFile: TFile | null, pattern: string, limit: number): Promise<CardData[]> {
     const bc = this.getBc();
     let files = this.app.vault.getMarkdownFiles()
-      .filter((f) => !this.isExcluded(f) && this.fileMatchesPattern(f, pattern));
+      .filter((f) => !isExcluded(f, this.app, this.settings) && this.fileMatchesPattern(f, pattern));
     files.sort((a, b) => a.basename.localeCompare(b.basename));
     if (limit > 0) files = files.slice(0, limit);
     return Promise.all(
@@ -1373,9 +1381,9 @@ export class NavigatorView extends ItemView {
         this.browserStack = [resolved];
         return;
       }
-      // Fallback: try basename match for notes
-      const byName = this.app.vault.getMarkdownFiles().find((x) => x.basename === homePath || x.path === homePath);
-      if (byName) { this.browserStack = [byName]; return; }
+      // Fallback: try basename match for notes (only if unambiguous)
+      const byName = this.app.vault.getMarkdownFiles().filter((x) => x.basename === homePath);
+      if (byName.length === 1) { this.browserStack = [byName[0]!]; return; }
     }
     if (this.settings.navigatorBrowseStart === 'roots') {
       this.browserStack = [];
@@ -1658,7 +1666,7 @@ export class NavigatorView extends ItemView {
       if (!path || seen.has(path)) return;
       const f = this.app.vault.getAbstractFileByPath(path);
       if (!(f instanceof TFile)) return;
-      if (this.isExcluded(f)) return;
+      if (isExcluded(f, this.app, this.settings)) return;
       seen.add(path);
       arr.push({ file: f, relation });
     };
@@ -1687,7 +1695,7 @@ export class NavigatorView extends ItemView {
       if (!path || seen.has(path)) return;
       const f = this.app.vault.getAbstractFileByPath(path);
       if (!(f instanceof TFile)) return;
-      if (this.isExcluded(f)) return;
+      if (isExcluded(f, this.app, this.settings)) return;
       seen.add(path);
       children.push({ file: f, relation: 'child' });
     };
@@ -1746,35 +1754,6 @@ export class NavigatorView extends ItemView {
     });
   }
 
-  private isExcluded(file: TFile): boolean {
-    const bt = this.getBreadTrailFm(file);
-    if (bt?.['hidden'] === true) return true;
-    if (this.settings.navigatorExcludeFiles.includes(file.path)) return true;
-    for (const folder of this.settings.navigatorExcludeFolders) {
-      const prefix = folder.endsWith('/') ? folder : folder + '/';
-      if (file.path.startsWith(prefix)) return true;
-    }
-    if (this.settings.navigatorExcludeFrontmatter.length > 0) {
-      const fm: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter;
-      if (fm) {
-        for (const pattern of this.settings.navigatorExcludeFrontmatter) {
-          const frontmatter = typeof fm === 'object' && !Array.isArray(fm) ? fm as Record<string, unknown> : {};
-          const colonIdx = pattern.indexOf(':');
-          if (colonIdx === -1) {
-            const val = frontmatter[pattern];
-            if (val !== undefined && val !== null && val !== false && val !== '' && val !== 0) return true;
-          } else {
-            const key = pattern.slice(0, colonIdx).trim();
-            const expected = pattern.slice(colonIdx + 1).trim();
-            const val = frontmatter[key];
-            if ((typeof val === 'string' || typeof val === 'number') && String(val).trim() === expected) return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
   private hasChildren(file: TFile, bc: BreadcrumbsPlugin): boolean {
     for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
       if (e.edge_type?.toLowerCase() === 'down') return true;
@@ -1796,7 +1775,7 @@ export class NavigatorView extends ItemView {
         path: file.path,
         hasChildren: this.hasChildren(file, bc),
         hasParent,
-        excluded: this.isExcluded(file),
+        excluded: isExcluded(file, this.app, this.settings),
       }, folder)) roots.push(file);
     }
     return roots.sort((a, b) => a.basename.localeCompare(b.basename));
