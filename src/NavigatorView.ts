@@ -1120,8 +1120,9 @@ export class NavigatorView extends ItemView {
           this.initBrowserStack(activeFile, bc);
           void this.refresh();
         } else if (mode === 'recent' && this.mode === 'recent') {
-          // Toggle global ↔ local
-          this.recentViewMode = this.recentViewMode === 'global' ? 'local' : 'global';
+          // Pressing Recent while already in recent: return to global view.
+          // Local (siblings) view is toggled via the more-options menu.
+          this.recentViewMode = 'global';
           void this.refresh();
         } else {
           if (mode === 'browser') {
@@ -1140,6 +1141,12 @@ export class NavigatorView extends ItemView {
         if (this.mode !== 'browser') return;
         this.browserViewMode = this.browserViewMode === 'bc' ? 'files' : 'bc';
         if (this.browserViewMode === 'files') this.folderStack = [];
+        void this.refresh();
+      },
+
+      toggleRecentLocal: () => {
+        if (this.mode !== 'recent') return;
+        this.recentViewMode = this.recentViewMode === 'global' ? 'local' : 'global';
         void this.refresh();
       },
 

@@ -38,17 +38,26 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
           browserSortMode, followMode, layoutMode, filterActive } = data;
   const isBrowser = mode === 'browser';
   const isFileBrowser = isBrowser && browserViewMode === 'files';
+  const isRecent = mode === 'recent';
+  const isLocalRecent = isRecent && recentViewMode === 'local';
 
   const openMenu = (e: MouseEvent) => {
     const menu = new Menu();
 
-    // ── Browser sub-mode ─────────────────────────────────────────────────
+    // ── Sub-mode toggles ──────────────────────────────────────────────────
     if (isBrowser) {
       menu.addItem((item) =>
-        item.setSection('browser').setTitle(isFileBrowser ? 'BC hierarchy view' : 'File system view')
+        item.setSection('submode').setTitle(isFileBrowser ? 'BC hierarchy view' : 'File system view')
           .setIcon(isFileBrowser ? 'git-branch' : 'hard-drive')
           .setChecked(isFileBrowser)
           .onClick(() => actions.toggleFileBrowser()));
+    }
+    if (isRecent) {
+      menu.addItem((item) =>
+        item.setSection('submode').setTitle(isLocalRecent ? 'All notes' : 'Siblings only')
+          .setIcon(isLocalRecent ? 'clock' : 'users')
+          .setChecked(isLocalRecent)
+          .onClick(() => actions.toggleRecentLocal()));
     }
 
     // ── View ──────────────────────────────────────────────────────────────
@@ -106,9 +115,9 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
         )}
         {vis.recent && (
           <ModeBtn
-            icon={mode === 'recent' && recentViewMode === 'local' ? 'users' : 'clock'}
-            label={mode === 'recent' && recentViewMode === 'local' ? 'Recent (siblings)' : 'Recent'}
-            active={mode === 'recent'}
+            icon={isLocalRecent ? 'users' : 'clock'}
+            label={isLocalRecent ? 'Recent (siblings)' : 'Recent'}
+            active={isRecent}
             onClick={() => actions.setMode('recent')}
           />
         )}

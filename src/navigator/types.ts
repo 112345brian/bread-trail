@@ -89,6 +89,8 @@ export interface NavActions {
   setMode: (mode: NavMode) => void;
   /** Toggle between BC hierarchy view and file-system view in browser mode. */
   toggleFileBrowser: () => void;
+  /** Toggle between global recent and sibling-local recent view. */
+  toggleRecentLocal: () => void;
   /** Smart locate / reset: goes to active note, or resets to vault roots when already there. */
   goToActive: () => void;
   togglePreview: () => void;
