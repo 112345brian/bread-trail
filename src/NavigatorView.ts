@@ -318,12 +318,10 @@ export class NavigatorView extends ItemView {
         browserTitle = this.followTargets.length > 0
           ? this.followTargets.map((t) => this.getLabel(t)).join(', ')
           : isRootsView ? (this.browserRootFolder ?? 'Vault') : (currentFolder ? this.getLabel(currentFolder) : '');
-        const canGoUp = !isRootsView && (
-          this.browserStack.length > 1 ||
-          this.browserRootFolder !== null ||
-          (currentFolder != null && bc != null && this.getFirstParentFile(currentFolder, bc) != null) ||
-          this.settings.navigatorBrowseStart === 'roots'
-        );
+        // Vault roots is always reachable as the implicit parent of every
+        // parentless note, so the back button is enabled whenever we're not
+        // already at the roots view.
+        const canGoUp = !isRootsView;
         browserCanGoBack = canGoUp;
         const cycle = this.getBrowserSortCycle();
         const sort = this.getSort('browser-child', cycle);
@@ -1176,7 +1174,16 @@ export class NavigatorView extends ItemView {
             this.browserStack.pop();
           } else if (bc && currentFolder) {
             const parent = this.getFirstParentFile(currentFolder, bc);
-            if (parent) this.browserStack[0] = parent;
+            if (parent) {
+              this.browserStack[0] = parent;
+            } else {
+              // No BC parent — vault roots is the implicit parent of every
+              // root-level note, so going back lands on the roots view.
+              this.browserStack = [];
+            }
+          } else {
+            // bc unavailable or no note on stack — fall back to vault roots
+            this.browserStack = [];
           }
         }
         void this.refresh();
