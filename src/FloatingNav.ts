@@ -280,15 +280,7 @@ export class FloatingNavPanel {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  /** Return the display label for a file (alias from graphLabelProperty, or basename). */
   private getLabel(file: TFile): string {
-    const prop = this.getSettings().graphLabelProperty;
-    if (!prop) return file.basename;
-    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-    if (!fm) return file.basename;
-    const val = fm[prop];
-    if (Array.isArray(val) && val.length > 0) return String(val[0]);
-    if (val && typeof val === 'string') return val;
     return file.basename;
   }
 

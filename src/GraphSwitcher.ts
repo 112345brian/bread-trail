@@ -1310,20 +1310,6 @@ export class GraphSwitcher extends Modal {
   }
 
   private getLabel(file: TFile): string {
-    const property = this.settings.graphLabelProperty;
-    if (!property) return file.basename;
-
-    const cachedFrontmatter: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter;
-    const frontmatter = typeof cachedFrontmatter === 'object' && cachedFrontmatter !== null
-      ? cachedFrontmatter as Record<string, unknown>
-      : undefined;
-    const value = frontmatter?.[property];
-    if (Array.isArray(value)) {
-      const first = value.find((item): item is string => typeof item === 'string' && item.trim().length > 0);
-      return first?.trim() ?? file.basename;
-    }
-    if (typeof value === 'string' && value.trim()) return value.trim();
-    if (typeof value === 'number') return String(value);
     return file.basename;
   }
 }

@@ -46,14 +46,6 @@ function getVaultRoots(bc: BreadcrumbsPlugin, app: App): TFile[] {
   return roots.sort((a, b) => a.basename.localeCompare(b.basename));
 }
 
-function getLabel(file: TFile, labelProp: string, app: App): string {
-  if (!labelProp) return file.basename;
-  const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-  const val: unknown = fm?.[labelProp];
-  if (Array.isArray(val) && val.length > 0) return String(val[0]);
-  if (typeof val === 'string' && val.trim()) return val.trim();
-  return file.basename;
-}
 
 function isFavorite(
   file: TFile,
@@ -192,7 +184,6 @@ function Tile({ file, isFolder, isActive, label, onTap, onLongPress, doubleTapTo
 interface GridProps {
   app: App;
   bc: BreadcrumbsPlugin;
-  labelProp: string;
   activeFile: TFile | null;
   tileMinWidth: number;
   startMode: 'active-parent' | 'home' | 'roots';
@@ -209,7 +200,7 @@ interface GridProps {
   startFile?: TFile | null;
 }
 
-function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, startMode, homeNote, showFavorites, showRecents, recentsCount, favoritePaths, favoritesParentNote, onOpen, onTitleChange, doubleTapToOpen, startFile }: GridProps) {
+function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, showFavorites, showRecents, recentsCount, favoritePaths, favoritesParentNote, onOpen, onTitleChange, doubleTapToOpen, startFile }: GridProps) {
   const [localTileWidth, setLocalTileWidth] = useState(tileMinWidth);
   const [sortMode, setSortMode] = useState<ExplorerSortMode>('alpha');
 
@@ -278,9 +269,9 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, startMode,
 
   // Keep the modal title in sync with the current navigation level
   useEffect(() => {
-    const title = current ? getLabel(current, labelProp, app) : app.vault.getName();
+    const title = current ? current.basename : app.vault.getName();
     onTitleChange?.(title);
-  }, [current, labelProp, onTitleChange]);
+  }, [current, onTitleChange]);
 
   const drillIn = useCallback((file: TFile) => {
     setStack((s) => [...s, file]);
@@ -330,7 +321,7 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, startMode,
             <>
               <span class="bt-explorer-crumb-sep">›</span>
               <button key={f.path} class="bt-explorer-crumb-btn" onClick={() => goToIndex(i)}>
-                {getLabel(f, labelProp, app)}
+                {f.basename}
               </button>
             </>
           ))}
@@ -358,7 +349,7 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, startMode,
                 file={file}
                 isFolder={isFolder}
                 isActive={file.path === activeFile?.path}
-                label={getLabel(file, labelProp, app)}
+                label={file.basename}
                 onTap={() => isFolder ? drillIn(file) : onOpen(file)}
                 onLongPress={isFolder ? () => onOpen(file) : undefined}
                 doubleTapToOpen={doubleTapToOpen}
@@ -394,7 +385,7 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, startMode,
                         file={file}
                         isFolder={isFolder}
                         isActive={file.path === activeFile?.path}
-                        label={getLabel(file, labelProp, app)}
+                        label={file.basename}
                         onTap={() => isFolder ? drillIn(file) : onOpen(file)}
                         onLongPress={isFolder ? () => onOpen(file) : undefined}
                 doubleTapToOpen={doubleTapToOpen}
@@ -421,7 +412,7 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, startMode,
                       file={file}
                       isFolder={false}
                       isActive={file.path === activeFile?.path}
-                      label={getLabel(file, labelProp, app)}
+                      label={file.basename}
                       onTap={() => onOpen(file)}
                     />
                   ))}
@@ -440,7 +431,6 @@ function ExplorerGrid({ app, bc, labelProp, activeFile, tileMinWidth, startMode,
 
 export class ExplorerModal extends Modal {
   private bc: BreadcrumbsPlugin;
-  private labelProp: string;
   private tileMinWidth: number;
   private startMode: 'active-parent' | 'home' | 'roots';
   private homeNote: string;
@@ -456,7 +446,6 @@ export class ExplorerModal extends Modal {
   constructor(
     app: App,
     bc: BreadcrumbsPlugin,
-    labelProp: string,
     tileMinWidth: number,
     startMode: 'active-parent' | 'home' | 'roots',
     homeNote: string,
@@ -471,7 +460,6 @@ export class ExplorerModal extends Modal {
   ) {
     super(app);
     this.bc = bc;
-    this.labelProp = labelProp;
     this.tileMinWidth = tileMinWidth;
     this.startMode = startMode;
     this.homeNote = homeNote;
@@ -494,7 +482,6 @@ export class ExplorerModal extends Modal {
       h(ExplorerGrid, {
         app: this.app,
         bc: this.bc,
-        labelProp: this.labelProp,
         activeFile,
         tileMinWidth: this.tileMinWidth,
         onOpen: (file: TFile) => {

@@ -421,7 +421,6 @@ export default class BreadTrail extends Plugin {
     const effectiveHomeNote = this.settings.homeNote || this.settings.explorerHomeNote;
     const modal = new ExplorerModal(
       this.app, bc,
-      this.settings.graphLabelProperty,
       this.settings.explorerTileMinWidth,
       effectiveStartMode,
       effectiveHomeNote,
@@ -762,13 +761,6 @@ export default class BreadTrail extends Plugin {
   }
 
   private getBcLabel(file: TFile): string {
-    const prop = this.settings.graphLabelProperty;
-    if (!prop) return file.basename;
-    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-    if (!fm) return file.basename;
-    const val: unknown = fm[prop];
-    if (Array.isArray(val) && val.length > 0) return String(val[0]);
-    if (typeof val === 'string' && val.trim()) return val.trim();
     return file.basename;
   }
 

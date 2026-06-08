@@ -1304,16 +1304,6 @@ export class NavigatorView extends ItemView {
   }
 
   private getLabel(file: TFile): string {
-    const prop = this.settings.graphLabelProperty;
-    if (!prop) return file.basename;
-    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-    if (!fm) return file.basename;
-    const val: unknown = fm[prop];
-    if (Array.isArray(val)) {
-      const first = val.find((v): v is string => typeof v === 'string' && v.trim().length > 0);
-      return first?.trim() ?? file.basename;
-    }
-    if (typeof val === 'string' && val.trim()) return val.trim();
     return file.basename;
   }
 

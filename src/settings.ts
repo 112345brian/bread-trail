@@ -49,7 +49,6 @@ export interface ValidationRules {
 export interface BreadTrailSettings {
   parentDepth: number;
   childDepth: number;
-  graphLabelProperty: string;
   graphNodeMetaProperty: string;
   showGraphSiblings: boolean;
   showSequenceChildren: boolean;
@@ -177,7 +176,6 @@ export const DEFAULT_VALIDATION_RULES: ValidationRules = {
 export const DEFAULT_SETTINGS: BreadTrailSettings = {
   parentDepth: 2,
   childDepth: 1,
-  graphLabelProperty: 'aliases',
   graphNodeMetaProperty: '',
   showGraphSiblings: false,
   showSequenceChildren: true,
@@ -293,7 +291,6 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
   return {
     parentDepth: normalizeDepth(settings.parentDepth, DEFAULT_SETTINGS.parentDepth),
     childDepth: normalizeDepth(settings.childDepth, DEFAULT_SETTINGS.childDepth),
-    graphLabelProperty: typeof settings.graphLabelProperty === 'string' ? settings.graphLabelProperty.trim() : DEFAULT_SETTINGS.graphLabelProperty,
     graphNodeMetaProperty: typeof settings.graphNodeMetaProperty === 'string' ? settings.graphNodeMetaProperty.trim() : DEFAULT_SETTINGS.graphNodeMetaProperty,
     showGraphSiblings: typeof settings.showGraphSiblings === 'boolean' ? settings.showGraphSiblings : DEFAULT_SETTINGS.showGraphSiblings,
     showSequenceChildren: typeof settings.showSequenceChildren === 'boolean' ? settings.showSequenceChildren : DEFAULT_SETTINGS.showSequenceChildren,
@@ -466,15 +463,6 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
   private renderGraph(el: HTMLElement) {
     new Setting(el).setName('Labels & metadata').setHeading();
-
-    new Setting(el)
-      .setName('Label property')
-      .setDesc('Frontmatter property used for node labels. Uses the first value when it\'s a list. Leave blank to use filenames.')
-      .addText((t) => {
-        t.setPlaceholder('Aliases');
-        t.setValue(this.plugin.settings.graphLabelProperty);
-        t.onChange(async (v) => { this.plugin.settings.graphLabelProperty = v.trim(); await this.save(); });
-      });
 
     new Setting(el)
       .setName('Node metadata property')
