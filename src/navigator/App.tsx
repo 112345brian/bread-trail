@@ -13,16 +13,16 @@ function formatGridDate(mtime: number): string {
 function GridCard({ data, actions }: { data: CardData; actions: NavActions }) {
   return (
     <div
-      class={`bt-grid-card${data.isActive ? ' is-active' : ''}`}
+      class={`bt-grid-card${data.isActive ? ' is-active' : ''}${!data.imageUrl && !data.snippet ? ' bt-grid-card-compact' : ''}`}
       onClick={(e) => actions.openFile(data.file, e.ctrlKey || e.metaKey)}
     >
-      <div class="bt-grid-card-preview">
-        {data.imageUrl
-          ? <img class="bt-grid-card-img" src={data.imageUrl} />
-          : data.snippet
-            ? <span class="bt-grid-card-text">{data.snippet}</span>
-            : null}
-      </div>
+      {(data.imageUrl || data.snippet) && (
+        <div class="bt-grid-card-preview">
+          {data.imageUrl
+            ? <img class="bt-grid-card-img" src={data.imageUrl} />
+            : <span class="bt-grid-card-text">{data.snippet}</span>}
+        </div>
+      )}
       <div class="bt-grid-card-title">{data.label}</div>
       <div class="bt-grid-card-date">{formatGridDate(data.file.stat.mtime)}</div>
     </div>
