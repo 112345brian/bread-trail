@@ -2,15 +2,6 @@ import { Menu, setIcon } from 'obsidian';
 import type { ToolbarData, NavActions, SortMode } from './types';
 import { OIcon } from './OIcon';
 
-const SORT_ICON: Record<string, string> = {
-  sequence: 'list-ordered', alpha: 'arrow-up-a-z', 'alpha-desc': 'arrow-down-z-a',
-  field: 'arrow-up-narrow-wide', mtime: 'clock', ctime: 'calendar',
-};
-const SORT_LABEL: Record<string, string> = {
-  sequence: 'Sequence order', alpha: 'A → Z', 'alpha-desc': 'Z → A',
-  field: 'By field', mtime: 'Date modified', ctime: 'Date created',
-};
-
 const SORT_MENU_ITEMS: { mode: SortMode; label: string; icon: string }[] = [
   { mode: 'mtime',      label: 'Date modified', icon: 'clock' },
   { mode: 'alpha',      label: 'A → Z',         icon: 'arrow-up-a-z' },

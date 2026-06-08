@@ -382,8 +382,8 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
           result.push({
             type,
             enabled: typeof s['enabled'] === 'boolean' ? s['enabled'] : true,
-            limit:   typeof s['limit']   === 'number' && (s['limit'] as number) >= 0
-              ? Math.floor(s['limit'] as number) : 0,
+            limit:   typeof s['limit']   === 'number' && s['limit'] >= 0
+              ? Math.floor(s['limit']) : 0,
             param,
           });
         }
@@ -454,6 +454,19 @@ class BreadTrailSettingTab extends PluginSettingTab {
     new Setting(el).setName('Quick switcher').setHeading();
     this.depthSetting(el, 'Parent depth', 'Maximum parent levels to traverse.', 'parentDepth');
     this.depthSetting(el, 'Child depth',  'Maximum child levels to traverse.',  'childDepth');
+
+    new Setting(el).setName('Startup').setHeading();
+
+    new Setting(el)
+      .setName('Show startup notice')
+      .setDesc('Show a notice when the breadcrumbs plugin is detected.')
+      .addToggle((t) => {
+        t.setValue(this.plugin.settings.showStartupNotice);
+        t.onChange(async (v) => {
+          this.plugin.settings.showStartupNotice = v;
+          await this.save();
+        });
+      });
   }
 
   // ── Graph ─────────────────────────────────────────────────────────────────
@@ -494,6 +507,19 @@ class BreadTrailSettingTab extends PluginSettingTab {
       .addToggle((t) => {
         t.setValue(this.plugin.settings.showSequenceChildren);
         t.onChange(async (v) => { this.plugin.settings.showSequenceChildren = v; await this.save(); });
+      });
+
+    new Setting(el)
+      .setName('Node display')
+      .setDesc('Choose whether graph nodes show compact labels or note excerpts by default.')
+      .addDropdown((d) => {
+        d.addOption('compact', 'Compact');
+        d.addOption('excerpt', 'Excerpt');
+        d.setValue(this.plugin.settings.graphNodeDisplayMode);
+        d.onChange(async (v) => {
+          this.plugin.settings.graphNodeDisplayMode = v as 'compact' | 'excerpt';
+          await this.save();
+        });
       });
 
     new Setting(el).setName('Interaction').setHeading();
@@ -552,9 +578,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Metadata properties')
-      .setDesc('Frontmatter keys to display below each card title, one per line. ISO date values are formatted automatically (e.g. 2026-01-05 → Jan 5, 2026).')
+      .setDesc('Frontmatter keys to display below each card title, one per line. Iso date values are formatted automatically (e.g. 2026-01-05 → jan 5, 2026).')
       .addTextArea((t) => {
-        t.setPlaceholder('Date\nStatus\nTags');
+        t.setPlaceholder('Date\nstatus\ntags');
         t.setValue(this.plugin.settings.navigatorMetaProperties.join('\n'));
         t.inputEl.rows = 4;
         t.onChange(async (v) => {
@@ -578,8 +604,8 @@ class BreadTrailSettingTab extends PluginSettingTab {
       });
 
     new Setting(el)
-      .setName('Show siblings in Context mode')
-      .setDesc('Adds a Siblings section showing other notes that share the same parent as the active note.')
+      .setName('Show siblings in context mode')
+      .setDesc('Adds a siblings section showing other notes that share the same parent as the active note.')
       .addToggle((t) => {
         t.setValue(this.plugin.settings.navigatorShowSiblings);
         t.onChange(async (v) => { this.plugin.settings.navigatorShowSiblings = v; await this.save(); });
@@ -610,8 +636,8 @@ class BreadTrailSettingTab extends PluginSettingTab {
         });
 
       new Setting(el)
-        .setName('Skip preview for Base notes')
-        .setDesc('When on, notes whose first 3 lines contain a transcluded Base (![[*.base]]) or an inline ```base block are shown without a preview excerpt.')
+        .setName('Skip preview for base notes')
+        .setDesc('When on, notes whose first 3 lines contain a transcluded base (![[*.base]]) or an inline ```base block are shown without a preview excerpt.')
         .addToggle((t) => {
           t.setValue(this.plugin.settings.navigatorSkipPreviewForBases);
           t.onChange(async (v) => { this.plugin.settings.navigatorSkipPreviewForBases = v; await this.save(); });
@@ -641,7 +667,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
         .setName('Home note')
         .setDesc('The note to start from. The explorer will show its children.')
         .addText((t) => {
-          t.setPlaceholder('e.g. Meta/Index');
+          t.setPlaceholder('E.g. Meta/index');
           t.setValue(this.plugin.settings.explorerHomeNote);
           t.onChange(async (v) => { this.plugin.settings.explorerHomeNote = v.trim(); await this.save(); });
         });
@@ -748,7 +774,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
     // ── Header breadcrumbs ─────────────────────────────────────────────────
     new Setting(el)
       .setName('Header breadcrumbs')
-      .setDesc('Replace the file-path breadcrumb in note headers with clickable BC ancestor links.')
+      .setDesc('Replace the file-path breadcrumb in note headers with clickable bc ancestor links.')
       .addToggle((t) => {
         t.setValue(this.plugin.settings.headerBreadcrumbs);
         t.onChange(async (v) => {
@@ -778,7 +804,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
     new Setting(el).setName('Pinboard').setHeading();
 
     el.createEl('p', {
-      text: 'The ★ Favorites sidebar tab is a fully customizable pinboard. Enable sections, reorder them with ↑ ↓, and configure each one below.',
+      text: 'The ★ favorites sidebar tab is a fully customizable pinboard. Enable sections, reorder them with ↑ ↓, and configure each one below.',
       cls: 'setting-item-description',
     });
 
@@ -788,7 +814,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Pinned notes')
-      .setDesc('File paths to always include in the Favorites section, one per line. Notes with bread-trail.favorite: true in their frontmatter are also included automatically.')
+      .setDesc('File paths to always include in the favorites section, one per line. Notes with bread-trail.favorite: true in their frontmatter are also included automatically.')
       .addTextArea((t) => {
         t.setPlaceholder('Journal/Index.md\nProjects/MOC.md');
         t.setValue(this.plugin.settings.navigatorFavorites.join('\n'));
@@ -801,7 +827,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Favorites parent note')
-      .setDesc('Path to a note whose BC children are treated as favorites. Leave blank to disable.')
+      .setDesc('Path to a note whose bc children are treated as favorites. Leave blank to disable.')
       .addText((t) => {
         t.setPlaceholder('e.g. Meta/Frequent.md');
         t.setValue(this.plugin.settings.navigatorFavoritesParentNote);
@@ -811,9 +837,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
     if (this.advancedMode) {
       new Setting(el)
         .setName('Favorites metadata properties')
-        .setDesc('Frontmatter keys shown in Favorites section cards, one per line.')
+        .setDesc('Frontmatter keys shown in favorites section cards, one per line.')
         .addTextArea((t) => {
-          t.setPlaceholder('Date\nStatus');
+          t.setPlaceholder('Date\nstatus');
           t.setValue(this.plugin.settings.navigatorFavoritesMetaProperties.join('\n'));
           t.inputEl.rows = 3;
           t.onChange(async (v) => {
@@ -895,7 +921,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
         .setName('Recent metadata properties')
         .setDesc('Frontmatter keys shown in recent view cards, one per line. Independent from the context/browse card properties.')
         .addTextArea((t) => {
-          t.setPlaceholder('Date\nStatus');
+          t.setPlaceholder('Date\nstatus');
           t.setValue(this.plugin.settings.navigatorRecentMetaProperties.join('\n'));
           t.inputEl.rows = 3;
           t.onChange(async (v) => {
@@ -969,7 +995,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
       new Setting(el)
         .setName('Show favorites on home view')
-        .setDesc('Display a Favorites section at the bottom of the browser home (vault roots) view.')
+        .setDesc('Display a favorites section at the bottom of the browser home (vault roots) view.')
         .addToggle((t) => {
           t.setValue(this.plugin.settings.navigatorHomeShowFavorites);
           t.onChange(async (v) => { this.plugin.settings.navigatorHomeShowFavorites = v; await this.save(); });
@@ -977,7 +1003,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
       new Setting(el)
         .setName('Show recent notes on home view')
-        .setDesc('Display a Recent section at the bottom of the browser home (vault roots) view.')
+        .setDesc('Display a recent section at the bottom of the browser home (vault roots) view.')
         .addToggle((t) => {
           t.setValue(this.plugin.settings.navigatorHomeShowRecents);
           t.onChange(async (v) => { this.plugin.settings.navigatorHomeShowRecents = v; await this.save(); });
@@ -985,7 +1011,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
       new Setting(el)
         .setName('Home view recent count')
-        .setDesc('Max number of recent notes shown in the home view Recent section.')
+        .setDesc('Max number of recent notes shown in the home view recent section.')
         .addSlider((s) => {
           s.setLimits(3, 30, 1);
           s.setValue(this.plugin.settings.navigatorHomeRecentsCount);
@@ -1077,9 +1103,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
       if (sec.type === 'tag') {
         new Setting(el)
           .setName('Tag')
-          .setDesc('Show notes tagged with this value (sub-tags included, e.g. project also matches project/work).')
+          .setDesc('Show notes tagged with this value (sub-tags included, e.g. Project also matches project/work).')
           .addText((t) => {
-            t.setPlaceholder('project');
+            t.setPlaceholder('Project');
             t.setValue(sec.param);
             t.onChange(async (v) => { sec.param = v.trim().replace(/^#/, ''); await this.save(); });
           });
@@ -1090,7 +1116,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
           .setName('Frontmatter filter')
           .setDesc('"key" matches any truthy value. "key:value" matches exactly. Example: status:active')
           .addText((t) => {
-            t.setPlaceholder('status:active');
+            t.setPlaceholder('Status:active');
             t.setValue(sec.param);
             t.onChange(async (v) => { sec.param = v.trim(); await this.save(); });
           });
@@ -1139,10 +1165,12 @@ class BreadTrailSettingTab extends PluginSettingTab {
       const iconEl = btn.createSpan({ cls: 'bt-pinboard-add-icon' });
       btn.prepend(iconEl);
       setIcon(iconEl, icon);
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', () => {
+        void (async () => {
         sections.push({ type, enabled: true, limit: 0, param: '' });
         await this.save();
         this.display();
+        })();
       });
     };
 

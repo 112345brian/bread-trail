@@ -75,7 +75,7 @@ class BreadcrumbsMissingModal extends Modal {
     titleEl.setText('Breadcrumbs plugin required');
 
     contentEl.createEl('p', {
-      text: 'BreadTrail requires the breadcrumbs plugin to work.',
+      text: 'Breadtrail requires the breadcrumbs plugin to work.',
     });
 
     contentEl.createEl('p', {
@@ -87,7 +87,7 @@ class BreadcrumbsMissingModal extends Modal {
     steps.createEl('li', { text: 'Open settings → community plugins' });
     steps.createEl('li', { text: 'Search for "breadcrumbs"' });
     steps.createEl('li', { text: 'Install and enable it' });
-    steps.createEl('li', { text: 'Reload BreadTrail' });
+    steps.createEl('li', { text: 'Reload breadtrail' });
 
     const btnContainer = contentEl.createDiv({ cls: 'modal-button-container' });
 
@@ -113,7 +113,7 @@ class TrailModal extends Modal {
 
   onOpen() {
     const { contentEl, titleEl } = this;
-    titleEl.setText('BreadTrail');
+    titleEl.setText('Breadtrail');
 
     contentEl.createEl('p', {
       text: `Viewing: ${this.file.basename}`,
@@ -178,7 +178,7 @@ export default class BreadTrail extends Plugin {
     );
 
     // Ribbon icon — opens the navigator sidebar
-    this.addRibbonIcon('footprints', 'BreadTrail navigator', async () => {
+    this.addRibbonIcon('footprints', 'Breadtrail navigator', async () => {
       const side = Platform.isMobile ? this.settings.mobileNavigatorSide : 'right';
       await this.openNavigatorInSidebar(side);
     });
@@ -511,15 +511,15 @@ export default class BreadTrail extends Plugin {
     };
 
     const opts = { passive: true } as const;
-    document.addEventListener('touchstart',  onStart, opts);
-    document.addEventListener('touchmove',   onMove,  opts);
-    document.addEventListener('touchend',    onEnd,   opts);
-    document.addEventListener('touchcancel', onEnd,   opts);
+    activeDocument.addEventListener('touchstart',  onStart, opts);
+    activeDocument.addEventListener('touchmove',   onMove,  opts);
+    activeDocument.addEventListener('touchend',    onEnd,   opts);
+    activeDocument.addEventListener('touchcancel', onEnd,   opts);
     this.register(() => {
-      document.removeEventListener('touchstart',  onStart);
-      document.removeEventListener('touchmove',   onMove);
-      document.removeEventListener('touchend',    onEnd);
-      document.removeEventListener('touchcancel', onEnd);
+      activeDocument.removeEventListener('touchstart',  onStart);
+      activeDocument.removeEventListener('touchmove',   onMove);
+      activeDocument.removeEventListener('touchend',    onEnd);
+      activeDocument.removeEventListener('touchcancel', onEnd);
     });
   }
 
@@ -564,6 +564,9 @@ export default class BreadTrail extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
     this.getNavigatorView()?.scheduleRefresh();
+    this.syncFloatingNavPanels();
+    this.refreshFloatingNavPanels();
+    this.updateAllHeaderBreadcrumbs();
   }
 
   private ensureBreadcrumbs(): BreadcrumbsPlugin | null {
@@ -587,7 +590,7 @@ export default class BreadTrail extends Plugin {
       return;
     }
 
-    new Notice('BreadTrail: Breadcrumbs plugin not found.');
+    new Notice('Breadtrail: Breadcrumbs plugin not found.');
     new BreadcrumbsMissingModal(this.app).open();
   }
 
@@ -654,9 +657,7 @@ export default class BreadTrail extends Plugin {
       const panels = this.floatingPanels.get(view)!;
 
       if (showLeft && !panels.left) {
-        panels.left = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), 'left', () => {
-          void this.openNavigatorInSidebar('left');
-        });
+        panels.left = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), 'left', this.createFloatingNavActions(view, 'left'));
         panels.left.attach();
       } else if (!showLeft && panels.left) {
         panels.left.detach();
@@ -664,9 +665,7 @@ export default class BreadTrail extends Plugin {
       }
 
       if (showRight && !panels.right) {
-        panels.right = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), 'right', () => {
-          void this.openNavigatorInSidebar('right');
-        });
+        panels.right = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), 'right', this.createFloatingNavActions(view, 'right'));
         panels.right.attach();
       } else if (!showRight && panels.right) {
         panels.right.detach();
@@ -693,12 +692,37 @@ export default class BreadTrail extends Plugin {
     this.detachSummonedFloatingPanel();
 
     const side = this.settings.floatingNavLeft && !this.settings.floatingNavRight ? 'left' : 'right';
-    const panel = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), side, () => {
-      this.detachSummonedFloatingPanel();
-      void this.openNavigatorInSidebar(side);
-    });
+    const panel = new FloatingNavPanel(view, this.app, () => this.settings, () => this.ensureBreadcrumbs(), side, this.createFloatingNavActions(view, side, true));
     panel.attach();
     this.summonedFloatingPanel = { view, panel };
+  }
+
+  private createFloatingNavActions(view: MarkdownView, side: 'left' | 'right', detachOnPin = false) {
+    return {
+      pinToSidebar: () => {
+        if (detachOnPin) this.detachSummonedFloatingPanel();
+        void this.openNavigatorInSidebar(side);
+      },
+      openGraph: () => {
+        const file = view.file;
+        const bc = this.ensureBreadcrumbs();
+        if (!file || !bc) {
+          new BreadcrumbsMissingModal(this.app).open();
+          return;
+        }
+        new GraphSwitcher(this.app, file, bc, this.settings, () => this.saveSettings()).open();
+      },
+      openExplorer: () => this.openExplorerModal(view.file ?? undefined),
+      openQuickSwitcher: () => {
+        const file = view.file;
+        const bc = this.ensureBreadcrumbs();
+        if (!file || !bc) {
+          new BreadcrumbsMissingModal(this.app).open();
+          return;
+        }
+        new BreadcrumbQuickSwitcher(this.app, file, bc, this.settings).open();
+      },
+    };
   }
 
   private detachSummonedFloatingPanel(): void {
@@ -833,7 +857,7 @@ export default class BreadTrail extends Plugin {
       for (const child of Array.from(titleContainer.children)) {
         if (child.classList.contains('view-header-title') || child.classList.contains('bt-header-crumbs')) continue;
         (child as HTMLElement).dataset.btHidden = 'true';
-        (child as HTMLElement).style.display = 'none';
+        (child as HTMLElement).addClass('bt-header-hidden');
       }
     }
   }
@@ -844,7 +868,7 @@ export default class BreadTrail extends Plugin {
       leaf.view.containerEl.querySelectorAll('.bt-header-crumbs').forEach((el) => el.remove());
       // Restore any elements we hid
       leaf.view.containerEl.querySelectorAll<HTMLElement>('[data-bt-hidden]').forEach((el) => {
-        el.style.display = '';
+        el.removeClass('bt-header-hidden');
         delete el.dataset.btHidden;
       });
     });

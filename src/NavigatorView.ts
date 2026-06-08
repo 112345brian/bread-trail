@@ -84,7 +84,7 @@ export class NavigatorView extends ItemView {
   }
 
   getViewType()    { return NAVIGATOR_VIEW_TYPE; }
-  getDisplayText() { return 'BreadTrail'; }
+  getDisplayText() { return 'Breadtrail'; }
   getIcon()        { return 'footprints'; }
 
   async onOpen() {
@@ -535,7 +535,7 @@ export class NavigatorView extends ItemView {
       if (roots.length === 0) {
         return { sections: [], emptyMessage: 'No top-level notes found. Add BC parent/child relationships to get started.' };
       }
-      const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' as NavRelation }));
+      const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' }));
       const flatCards = await Promise.all(
         this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
       );
@@ -548,7 +548,7 @@ export class NavigatorView extends ItemView {
     const sort = this.getSort('browser-child', cycle);
     const roots = this.getVaultRoots(bc);
     if (roots.length > 0) {
-      const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' as NavRelation }));
+      const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' }));
       const cards = await Promise.all(
         this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
       );
@@ -943,7 +943,10 @@ export class NavigatorView extends ItemView {
       }
     }
     // Frontmatter tags
-    const fmTags = cache.frontmatter?.['tags'];
+    const frontmatter = cache.frontmatter as unknown;
+    const fmTags = frontmatter && typeof frontmatter === 'object' && !Array.isArray(frontmatter)
+      ? (frontmatter as Record<string, unknown>)['tags']
+      : undefined;
     const list: string[] = Array.isArray(fmTags)
       ? fmTags.filter((v): v is string => typeof v === 'string')
       : typeof fmTags === 'string' ? [fmTags] : [];

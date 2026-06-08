@@ -55,8 +55,10 @@ function isFavorite(
   parentNotePath: string,
 ): boolean {
   if (pinnedPaths.has(file.path)) return true;
-  const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-  const btFm = fm?.['bread-trail'];
+  const fm = app.metadataCache.getFileCache(file)?.frontmatter as unknown;
+  const btFm = fm && typeof fm === 'object' && !Array.isArray(fm)
+    ? (fm as Record<string, unknown>)['bread-trail']
+    : undefined;
   if (typeof btFm === 'object' && btFm !== null && (btFm as Record<string, unknown>)['favorite'] === true) return true;
   if (!parentNotePath) return false;
   for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {

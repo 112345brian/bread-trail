@@ -38,6 +38,13 @@ interface Neighborhood {
   children: TFile[];
 }
 
+interface FloatingNavActions {
+  pinToSidebar(): void;
+  openGraph(): void;
+  openExplorer(): void;
+  openQuickSwitcher(): void;
+}
+
 // ── Panel ─────────────────────────────────────────────────────────────────────
 
 export class FloatingNavPanel {
@@ -49,7 +56,7 @@ export class FloatingNavPanel {
     private readonly getSettings: () => BreadTrailSettings,
     private readonly getBc: () => BreadcrumbsPlugin | null,
     readonly side: 'left' | 'right',
-    private readonly onPin: () => void,
+    private readonly actions: FloatingNavActions,
   ) {
     this.container = activeDocument.createElement('div');
     this.container.className = `bt-float bt-float-${side}`;
@@ -95,12 +102,10 @@ export class FloatingNavPanel {
 
     // ── Toolbar ──────────────────────────────────────────────────────────────
     const toolbar = inner.createDiv('bt-float-toolbar');
-    const pinBtn = toolbar.createEl('button', {
-      cls: 'bt-float-pin-btn',
-      attr: { 'aria-label': 'Open in sidebar' },
-    });
-    setIcon(pinBtn, this.side === 'left' ? 'panel-left-open' : 'panel-right-open');
-    pinBtn.addEventListener('click', (e) => { e.stopPropagation(); this.onPin(); });
+    this.renderToolbarButton(toolbar, 'search', 'Quick switch related notes', () => this.actions.openQuickSwitcher());
+    this.renderToolbarButton(toolbar, 'network', 'Open graph switcher', () => this.actions.openGraph());
+    this.renderToolbarButton(toolbar, 'layout-grid', 'Open tile explorer', () => this.actions.openExplorer());
+    this.renderToolbarButton(toolbar, this.side === 'left' ? 'panel-left-open' : 'panel-right-open', 'Pin to sidebar', () => this.actions.pinToSidebar());
 
     if (!file || file.extension !== 'md') {
       inner.createEl('p', { text: 'Open a note to see context.', cls: 'bt-float-empty' });
@@ -286,15 +291,34 @@ export class FloatingNavPanel {
 
   /** Read a frontmatter value as a string, handling arrays. */
   private getFmString(file: TFile, key: string): string | null {
-    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-    if (!fm) return null;
-    const val = fm[key];
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
+    if (!fm || typeof fm !== 'object' || Array.isArray(fm)) return null;
+    const val = (fm as Record<string, unknown>)[key];
     if (val == null) return null;
-    if (Array.isArray(val)) return val.length > 0 ? String(val[0]) : null;
-    return String(val);
+    if (Array.isArray(val)) {
+      const first = (val as unknown[])[0];
+      return typeof first === 'string' || typeof first === 'number' || typeof first === 'boolean'
+        ? String(first)
+        : null;
+    }
+    if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return String(val);
+    return null;
   }
 
   // ── DOM rendering ──────────────────────────────────────────────────────────
+
+  private renderToolbarButton(toolbar: HTMLElement, icon: string, label: string, onClick: () => void): void {
+    const button = toolbar.createEl('button', {
+      cls: 'bt-float-toolbar-btn',
+      attr: { 'aria-label': label },
+    });
+    setIcon(button, icon);
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onClick();
+    });
+  }
 
   private renderSection(
     parent: HTMLElement,
