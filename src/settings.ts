@@ -551,10 +551,10 @@ class BreadTrailSettingTab extends PluginSettingTab {
     new Setting(el).setName('Home').setHeading();
 
     new Setting(el)
-      .setName('Home note')
-      .setDesc('The note the sidebar browser and explorer modal start from. The reset button returns here. Leave blank to start from the active note\'s parent.')
+      .setName('Home')
+      .setDesc('Folder or note the sidebar browser starts from. The reset button returns here. Folder paths open the file-system browser; note paths open the breadcrumb browser. Leave blank to start from the active note\'s parent.')
       .addText((t) => {
-        t.setPlaceholder('Index/Home.md');
+        t.setPlaceholder('Archive/ or Index/Home.md');
         t.setValue(this.plugin.settings.homeNote);
         t.onChange(async (v) => {
           this.plugin.settings.homeNote = v.trim();

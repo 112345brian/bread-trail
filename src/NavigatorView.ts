@@ -1251,13 +1251,26 @@ export class NavigatorView extends ItemView {
   }
 
   private initBrowserStack(activeFile: TFile | null, bc: BreadcrumbsPlugin | null) {
-    // Unified home note takes top priority
-    const homeNote = this.settings.homeNote;
-    if (homeNote) {
-      const f = this.app.vault.getAbstractFileByPath(homeNote) ??
-        this.app.vault.getMarkdownFiles().find((x) => x.basename === homeNote || x.path === homeNote) ??
+    // Unified home path takes top priority — accepts a folder OR a note
+    const homePath = this.settings.homeNote;
+    if (homePath) {
+      const resolved = this.app.vault.getAbstractFileByPath(homePath) ??
+        this.app.vault.getAbstractFileByPath(homePath.replace(/\/?$/, '')) ??
         null;
-      if (f instanceof TFile) { this.browserStack = [f]; return; }
+      if (resolved instanceof TFolder) {
+        // Folder home: switch to file-system browser at that folder
+        this.browserViewMode = 'files';
+        this.folderStack = resolved.path === '/' || resolved.path === '' ? [] : [resolved.path];
+        return;
+      }
+      if (resolved instanceof TFile) {
+        // Note home: BC browser starting at that note
+        this.browserStack = [resolved];
+        return;
+      }
+      // Fallback: try basename match for notes
+      const byName = this.app.vault.getMarkdownFiles().find((x) => x.basename === homePath || x.path === homePath);
+      if (byName) { this.browserStack = [byName]; return; }
     }
     const start = this.settings.navigatorBrowseStart;
     if (start === 'roots') {
