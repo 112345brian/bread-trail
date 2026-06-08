@@ -34,14 +34,22 @@ function hasChildren(file: TFile, bc: BreadcrumbsPlugin): boolean {
   return false;
 }
 
-function getVaultRoots(bc: BreadcrumbsPlugin, app: App): TFile[] {
+function isInFolder(file: TFile, folderPath: string): boolean {
+  const folder = folderPath.trim().replace(/^\/+|\/+$/g, '');
+  return !folder || file.path.startsWith(folder + '/');
+}
+
+function hasParent(file: TFile, bc: BreadcrumbsPlugin): boolean {
+  return bc.graph.get_outgoing_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'up') ||
+    bc.graph.get_incoming_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'down');
+}
+
+function getVaultRoots(bc: BreadcrumbsPlugin, app: App, rootFolder = ''): TFile[] {
   const roots: TFile[] = [];
   for (const file of app.vault.getMarkdownFiles()) {
-    if (!hasChildren(file, bc)) continue;
-    const hasParent =
-      bc.graph.get_outgoing_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'up') ||
-      bc.graph.get_incoming_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'down');
-    if (!hasParent) roots.push(file);
+    if (!isInFolder(file, rootFolder)) continue;
+    if (!rootFolder && !hasChildren(file, bc)) continue;
+    if (!hasParent(file, bc)) roots.push(file);
   }
   return roots.sort((a, b) => a.basename.localeCompare(b.basename));
 }
@@ -198,11 +206,12 @@ interface GridProps {
   onOpen: (file: TFile) => void;
   onTitleChange?: (title: string) => void;
   doubleTapToOpen: boolean;
+  rootFolder?: string;
   /** When provided, overrides startMode — the stack starts at this file (null = vault roots). */
   startFile?: TFile | null;
 }
 
-function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, showFavorites, showRecents, recentsCount, favoritePaths, favoritesParentNote, onOpen, onTitleChange, doubleTapToOpen, startFile }: GridProps) {
+function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, showFavorites, showRecents, recentsCount, favoritePaths, favoritesParentNote, onOpen, onTitleChange, doubleTapToOpen, rootFolder, startFile }: GridProps) {
   const [localTileWidth, setLocalTileWidth] = useState(tileMinWidth);
   const [sortMode, setSortMode] = useState<ExplorerSortMode>('alpha');
 
@@ -259,7 +268,7 @@ function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, 
   });
 
   const current = stack[stack.length - 1] ?? null;
-  const rawItems: TFile[] = current ? getChildren(current, bc, app) : getVaultRoots(bc, app);
+  const rawItems: TFile[] = current ? getChildren(current, bc, app) : getVaultRoots(bc, app, rootFolder);
   const items = [...rawItems].sort((a, b) => {
     switch (sortMode) {
       case 'alpha-desc':    return b.basename.localeCompare(a.basename);
@@ -442,6 +451,7 @@ export class ExplorerModal extends Modal {
   private favoritePaths: string[];
   private favoritesParentNote: string;
   private doubleTapToOpen: boolean;
+  private rootFolder?: string;
   private startFile?: TFile | null;
   private onClosed?: () => void;
 
@@ -459,6 +469,7 @@ export class ExplorerModal extends Modal {
     doubleTapToOpen: boolean,
     onClosed?: () => void,
     startFile?: TFile | null,
+    rootFolder?: string,
   ) {
     super(app);
     this.bc = bc;
@@ -473,6 +484,7 @@ export class ExplorerModal extends Modal {
     this.doubleTapToOpen = doubleTapToOpen;
     this.onClosed = onClosed;
     this.startFile = startFile;
+    this.rootFolder = rootFolder;
     this.modalEl.addClass('bt-explorer-modal');
   }
 
@@ -499,6 +511,7 @@ export class ExplorerModal extends Modal {
         favoritePaths: this.favoritePaths,
         favoritesParentNote: this.favoritesParentNote,
         doubleTapToOpen: this.doubleTapToOpen,
+        rootFolder: this.rootFolder,
         startFile: this.startFile,
         onTitleChange: (title: string) => this.setTitle(title),
       }),

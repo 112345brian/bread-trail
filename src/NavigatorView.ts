@@ -26,6 +26,8 @@ interface NavNote {
   seqTotal?: number;
 }
 
+type HomepageTarget = { kind: 'folder'; path: string } | { kind: 'file'; file: TFile };
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
 export class NavigatorView extends ItemView {
@@ -53,6 +55,8 @@ export class NavigatorView extends ItemView {
   private browserViewMode: 'bc' | 'files' = 'bc';
   // Folder path stack for file-system browser ('' = vault root)
   private folderStack: string[] = [];
+  // When set, BC root view is scoped to this vault folder.
+  private browserRootFolder: string | null = null;
 
   // Recent sub-mode: 'global' = all vault, 'local' = siblings of active note
   private recentViewMode: 'global' | 'local' = 'global';
@@ -292,6 +296,7 @@ export class NavigatorView extends ItemView {
           : isRootsView ? 'Vault' : (currentFolder ? this.getLabel(currentFolder) : '');
         const canGoUp = !isRootsView && (
           this.browserStack.length > 1 ||
+          this.browserRootFolder !== null ||
           (currentFolder != null && bc != null && this.getFirstParentFile(currentFolder, bc) != null) ||
           this.settings.navigatorBrowseStart === 'roots'
         );
@@ -486,7 +491,7 @@ export class NavigatorView extends ItemView {
 
     // Roots (home) view — stack is empty
     if (this.browserStack.length === 0) {
-      return this.computeHomeData(bc, activeFile, cycle);
+      return this.computeHomeData(bc, activeFile, cycle, this.browserRootFolder);
     }
 
     // Folder view
@@ -524,7 +529,21 @@ export class NavigatorView extends ItemView {
     bc: BreadcrumbsPlugin,
     activeFile: TFile | null,
     cycle: SortMode[],
+    rootFolder: string | null = null,
   ): Promise<Pick<NavData, 'sections' | 'flatCards' | 'emptyMessage'>> {
+    if (rootFolder) {
+      const sort = this.getSort('browser-child', cycle);
+      const roots = this.getVaultRoots(bc, rootFolder);
+      if (roots.length === 0) {
+        return { sections: [], emptyMessage: `No parentless notes found in ${rootFolder}.` };
+      }
+      const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' }));
+      const flatCards = await Promise.all(
+        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+      );
+      return { sections: [], flatCards };
+    }
+
     const showFavs = this.settings.navigatorHomeShowFavorites;
     const showRecents = this.settings.navigatorHomeShowRecents;
 
@@ -1241,6 +1260,14 @@ export class NavigatorView extends ItemView {
 
   private isBrowserAtActiveNote(activeFile: TFile | null, bc: BreadcrumbsPlugin | null): boolean {
     if (!activeFile || this.browserViewMode === 'files') return false;
+    const homepageTarget = this.getHomepageTargetForFile(activeFile);
+    if (homepageTarget?.kind === 'folder') {
+      return this.browserStack.length === 0 && this.browserRootFolder === homepageTarget.path;
+    }
+    if (homepageTarget?.kind === 'file') {
+      const currentTop = this.browserStack[this.browserStack.length - 1];
+      return currentTop?.path === homepageTarget.file.path;
+    }
     const currentTop = this.browserStack[this.browserStack.length - 1];
     if (!currentTop) return false;
     const target = this.getBrowserContainerForActiveFile(activeFile, bc);
@@ -1248,20 +1275,64 @@ export class NavigatorView extends ItemView {
   }
 
   private getBrowserContainerForActiveFile(activeFile: TFile, bc: BreadcrumbsPlugin | null): TFile {
-    if (this.isConfiguredHomeFile(activeFile)) return activeFile;
     return (bc ? this.getFirstParentFile(activeFile, bc) : null) ?? activeFile;
   }
 
-  private isConfiguredHomeFile(file: TFile): boolean {
-    const homePath = this.settings.homeNote.trim();
-    if (!homePath) return false;
-    const direct = this.app.vault.getAbstractFileByPath(homePath) ??
-      this.app.vault.getAbstractFileByPath(homePath + '.md');
-    if (direct instanceof TFile) return direct.path === file.path;
-    return file.basename === homePath || file.path === homePath;
+  private resolveHomepageFile(): TFile | null {
+    const configured = this.settings.homepageNote.trim();
+    if (configured) {
+      const direct = this.app.vault.getAbstractFileByPath(configured) ??
+        this.app.vault.getAbstractFileByPath(configured + '.md');
+      if (direct instanceof TFile) return direct;
+      return this.app.vault.getMarkdownFiles()
+        .find((file) => file.basename === configured || file.path === configured) ?? null;
+    }
+    return this.app.vault.getMarkdownFiles().find((file) => {
+      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
+      if (!frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) return false;
+      const cssclasses = (frontmatter as Record<string, unknown>)['cssclasses'];
+      return Array.isArray(cssclasses)
+        ? cssclasses.some((value) => String(value).toLowerCase() === 'homepage')
+        : typeof cssclasses === 'string' && cssclasses.toLowerCase() === 'homepage';
+    }) ?? null;
+  }
+
+  private getHomepageTargetForFile(file: TFile | null): HomepageTarget | null {
+    if (!file) return null;
+    const homepage = this.resolveHomepageFile();
+    if (!homepage || homepage.path !== file.path) return null;
+    return this.resolveHomepageTarget();
+  }
+
+  private resolveHomepageTarget(): HomepageTarget | null {
+    const target = this.settings.homepageTarget.trim();
+    if (!target) return null;
+    const direct = this.app.vault.getAbstractFileByPath(target) ??
+      this.app.vault.getAbstractFileByPath(target + '.md');
+    if (direct instanceof TFile) return { kind: 'file', file: direct };
+    if (direct instanceof TFolder) return { kind: 'folder', path: direct.path };
+    const file = this.app.vault.getMarkdownFiles()
+      .find((candidate) => candidate.basename === target || candidate.path === target);
+    if (file) return { kind: 'file', file };
+    return { kind: 'folder', path: target.replace(/^\/+|\/+$/g, '') };
   }
 
   private initBrowserStack(activeFile: TFile | null, bc: BreadcrumbsPlugin | null) {
+    const homepageTarget = this.getHomepageTargetForFile(activeFile);
+    if (homepageTarget?.kind === 'folder') {
+      this.browserViewMode = 'bc';
+      this.browserRootFolder = homepageTarget.path;
+      this.browserStack = [];
+      return;
+    }
+    if (homepageTarget?.kind === 'file') {
+      this.browserViewMode = 'bc';
+      this.browserRootFolder = null;
+      this.browserStack = [homepageTarget.file];
+      return;
+    }
+
+    this.browserRootFolder = null;
     // Unified home path takes top priority — accepts a folder OR a note
     const homePath = this.settings.homeNote;
     if (homePath) {
@@ -1699,11 +1770,13 @@ export class NavigatorView extends ItemView {
     return false;
   }
 
-  private getVaultRoots(bc: BreadcrumbsPlugin): TFile[] {
+  private getVaultRoots(bc: BreadcrumbsPlugin, rootFolder = ''): TFile[] {
+    const folder = rootFolder.trim().replace(/^\/+|\/+$/g, '');
     const roots: TFile[] = [];
     for (const file of this.app.vault.getMarkdownFiles()) {
       if (this.isExcluded(file)) continue;
-      if (!this.hasChildren(file, bc)) continue;
+      if (folder && !file.path.startsWith(folder + '/')) continue;
+      if (!folder && !this.hasChildren(file, bc)) continue;
       const hasParent =
         bc.graph.get_outgoing_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'up') ||
         bc.graph.get_incoming_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'down');

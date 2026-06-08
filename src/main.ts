@@ -50,6 +50,8 @@ interface AppWithSettings extends App {
   };
 }
 
+type HomepageTarget = { kind: 'folder'; path: string } | { kind: 'file'; file: TFile };
+
 function getBreadcrumbs(app: App): BreadcrumbsPlugin | null {
   const plugins = (app as AppWithPlugins).plugins;
   const plugin = plugins?.getPlugin?.('breadcrumbs') ?? plugins?.plugins?.['breadcrumbs'];
@@ -411,12 +413,24 @@ export default class BreadTrail extends Plugin {
 
   /** Open the tile explorer modal. Guards against duplicate spawns — if one is
    *  already open the call is a no-op. */
-  private openExplorerModal(startFile?: TFile | null): void {
+  private openExplorerModal(startFile?: TFile | null, rootFolder?: string): void {
     if (this.activeExplorerModal) return;
     const bc = this.ensureBreadcrumbs();
     if (!bc) { new BreadcrumbsMissingModal(this.app).open(); return; }
+    const activeFile = this.app.workspace.getActiveFile();
+    const homepageTarget = startFile === undefined && rootFolder === undefined
+      ? this.getHomepageTargetForFile(activeFile)
+      : null;
+    const effectiveStartFile = homepageTarget?.kind === 'file'
+      ? homepageTarget.file
+      : homepageTarget?.kind === 'folder'
+        ? null
+        : startFile;
+    const effectiveRootFolder = rootFolder ?? (homepageTarget?.kind === 'folder' ? homepageTarget.path : undefined);
     // homeNote unifies the start for both sidebar and modal; fall back to per-modal setting
-    const effectiveStartMode = (this.settings.homeNote && startFile === undefined)
+    const effectiveStartMode = effectiveRootFolder
+      ? 'roots'
+      : (this.settings.homeNote && effectiveStartFile === undefined)
       ? 'home' : this.settings.explorerStartMode;
     const effectiveHomeNote = this.settings.homeNote || this.settings.explorerHomeNote;
     const modal = new ExplorerModal(
@@ -431,25 +445,71 @@ export default class BreadTrail extends Plugin {
       this.settings.navigatorFavoritesParentNote,
       this.settings.explorerDoubleTapToOpen,
       () => { this.activeExplorerModal = null; },
-      startFile,
+      effectiveStartFile,
+      effectiveRootFolder,
     );
     this.activeExplorerModal = modal;
     modal.open();
   }
 
-  private resolveConfiguredHomeFile(): TFile | null {
-    const homePath = this.settings.homeNote || this.settings.explorerHomeNote;
-    if (!homePath) return null;
-    const direct = this.app.vault.getAbstractFileByPath(homePath) ??
-      this.app.vault.getAbstractFileByPath(homePath + '.md');
-    if (direct instanceof TFile) return direct;
-    return this.app.vault.getMarkdownFiles()
-      .find((file) => file.basename === homePath || file.path === homePath) ?? null;
+  private resolveConfiguredHomepageFile(): TFile | null {
+    const configured = this.settings.homepageNote;
+    if (configured) {
+      const direct = this.app.vault.getAbstractFileByPath(configured) ??
+        this.app.vault.getAbstractFileByPath(configured + '.md');
+      if (direct instanceof TFile) return direct;
+      return this.app.vault.getMarkdownFiles()
+        .find((file) => file.basename === configured || file.path === configured) ?? null;
+    }
+    return this.app.vault.getMarkdownFiles().find((file) => {
+      const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
+      if (!frontmatter || typeof frontmatter !== 'object' || Array.isArray(frontmatter)) return false;
+      const cssclasses = (frontmatter as Record<string, unknown>)['cssclasses'];
+      return Array.isArray(cssclasses)
+        ? cssclasses.some((value) => String(value).toLowerCase() === 'homepage')
+        : typeof cssclasses === 'string' && cssclasses.toLowerCase() === 'homepage';
+    }) ?? null;
   }
 
-  private isConfiguredHomeFile(file: TFile | null): boolean {
-    const home = this.resolveConfiguredHomeFile();
-    return !!file && !!home && file.path === home.path;
+  private isHomepageFile(file: TFile | null): boolean {
+    const homepage = this.resolveConfiguredHomepageFile();
+    return !!file && !!homepage && file.path === homepage.path;
+  }
+
+  private getHomepageTargetForFile(file: TFile | null): HomepageTarget | null {
+    if (!this.isHomepageFile(file)) return null;
+    return this.resolveHomepageTarget();
+  }
+
+  private resolveHomepageTarget(): HomepageTarget | null {
+    const target = this.settings.homepageTarget.trim();
+    if (!target) return null;
+    const direct = this.app.vault.getAbstractFileByPath(target) ??
+      this.app.vault.getAbstractFileByPath(target + '.md');
+    if (direct instanceof TFile) return { kind: 'file', file: direct };
+    if (direct) return { kind: 'folder', path: direct.path };
+    const file = this.app.vault.getMarkdownFiles()
+      .find((candidate) => candidate.basename === target || candidate.path === target);
+    if (file) return { kind: 'file', file };
+    return { kind: 'folder', path: target.replace(/^\/+|\/+$/g, '') };
+  }
+
+  private getFirstParentFile(file: TFile, bc: BreadcrumbsPlugin): TFile | null {
+    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
+      if (e.edge_type?.toLowerCase() !== 'up') continue;
+      const path = e.target_path?.(bc.graph) ?? e.target;
+      if (!path) continue;
+      const found = this.app.vault.getAbstractFileByPath(path);
+      if (found instanceof TFile) return found;
+    }
+    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
+      if (e.edge_type?.toLowerCase() !== 'down') continue;
+      const path = e.source_path?.(bc.graph) ?? e.source;
+      if (!path) continue;
+      const found = this.app.vault.getAbstractFileByPath(path);
+      if (found instanceof TFile) return found;
+    }
+    return null;
   }
 
   /** On mobile: two-finger gestures anywhere on screen navigate the tile explorer.
@@ -509,18 +569,19 @@ export default class BreadTrail extends Plugin {
       } else {
         // 'parent': open at the active note's BC parent — shows its siblings
         const activeFile = this.app.workspace.getActiveFile();
+        const homepageTarget = this.getHomepageTargetForFile(activeFile);
+        if (homepageTarget?.kind === 'folder') {
+          this.openExplorerModal(null, homepageTarget.path);
+          return;
+        }
+        if (homepageTarget?.kind === 'file') {
+          this.openExplorerModal(homepageTarget.file);
+          return;
+        }
         const bc = this.ensureBreadcrumbs();
         let parent: TFile | null = null;
-        if (activeFile && this.isConfiguredHomeFile(activeFile)) {
-          parent = activeFile;
-        } else if (activeFile && bc) {
-          for (const e of bc.graph.get_outgoing_edges(activeFile.path).to_array()) {
-            if (e.edge_type?.toLowerCase() !== 'up') continue;
-            const path = e.target_path?.(bc.graph) ?? e.target;
-            if (!path) continue;
-            const f = this.app.vault.getAbstractFileByPath(path);
-            if (f instanceof TFile) { parent = f; break; }
-          }
+        if (activeFile && bc) {
+          parent = this.getFirstParentFile(activeFile, bc);
         }
         // If no BC parent found, fall back to configured start mode
         this.openExplorerModal(parent ?? undefined);

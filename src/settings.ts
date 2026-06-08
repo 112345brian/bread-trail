@@ -86,6 +86,10 @@ export interface BreadTrailSettings {
   /** Home note — the anchor the sidebar browser and explorer modal start from.
    *  When set, overrides navigatorBrowseStart / explorerStartMode. */
   homeNote: string;
+  /** Dashboard/shell note that should browse from homepageTarget instead of its own BC parent. */
+  homepageNote: string;
+  /** Folder or note to show when the active note is the homepage. */
+  homepageTarget: string;
   /** What the browse view starts from. */
   navigatorBrowseStart: 'active' | 'note' | 'roots';
   /** File path of the start note when navigatorBrowseStart is 'note'. */
@@ -201,6 +205,8 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
     goToActive: true,
   },
   homeNote: '',
+  homepageNote: '',
+  homepageTarget: 'ARCHIVE',
   navigatorBrowseStart: 'active',
   navigatorBrowseStartNote: '',
   navigatorMetaProperties: [],
@@ -319,6 +325,14 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
       return { context: b('context'), browse: b('browse'), recent: b('recent'), favorites: b('favorites'), preview: b('preview'), reset: b('reset'), goToActive: b('goToActive') };
     })(),
     homeNote: typeof settings.homeNote === 'string' ? settings.homeNote.trim() : '',
+    homepageNote: typeof settings.homepageNote === 'string' ? settings.homepageNote.trim() : '',
+    homepageTarget: typeof settings.homepageTarget === 'string'
+      ? settings.homepageTarget.trim()
+      : typeof (settings as { homepageDirectory?: unknown }).homepageDirectory === 'string'
+        ? (settings as { homepageDirectory: string }).homepageDirectory.trim()
+      : typeof (settings as { homepageRootFolder?: unknown }).homepageRootFolder === 'string'
+        ? (settings as { homepageRootFolder: string }).homepageRootFolder.trim()
+        : 'ARCHIVE',
     navigatorBrowseStart: (settings.navigatorBrowseStart === 'note' || settings.navigatorBrowseStart === 'roots')
       ? settings.navigatorBrowseStart : 'active',
     navigatorBrowseStartNote: typeof settings.navigatorBrowseStartNote === 'string'
@@ -569,12 +583,36 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Home')
-      .setDesc('Folder or note the sidebar browser starts from. The reset button returns here. Folder paths open the file-system browser; note paths open the breadcrumb browser. Leave blank to start from the active note\'s parent.')
+      .setDesc('Folder or index note the sidebar browser starts from. When the active note is the homepage, bread trail shows this note instead.')
       .addText((t) => {
-        t.setPlaceholder('Archive/ or Index/Home.md');
+        t.setPlaceholder('TOC/index.md');
         t.setValue(this.plugin.settings.homeNote);
         t.onChange(async (v) => {
           this.plugin.settings.homeNote = v.trim();
+          await this.save();
+        });
+      });
+
+    new Setting(el)
+      .setName('Homepage note')
+      .setDesc('Dashboard note that should browse from the homepage target instead of from its own breadcrumb parent. Leave blank to auto-detect cssclasses: homepage.')
+      .addText((t) => {
+        t.setPlaceholder('TOC/Home.md');
+        t.setValue(this.plugin.settings.homepageNote);
+        t.onChange(async (v) => {
+          this.plugin.settings.homepageNote = v.trim();
+          await this.save();
+        });
+      });
+
+    new Setting(el)
+      .setName('Homepage target')
+      .setDesc('Folder or note to show when the active note is the homepage. Folders show parentless roots inside them; notes show their children.')
+      .addText((t) => {
+        t.setPlaceholder('ARCHIVE or TOC/index.md');
+        t.setValue(this.plugin.settings.homepageTarget);
+        t.onChange(async (v) => {
+          this.plugin.settings.homepageTarget = v.trim();
           await this.save();
         });
       });
