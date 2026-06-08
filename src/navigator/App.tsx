@@ -12,9 +12,11 @@ function formatGridDate(mtime: number): string {
 
 function GridCard({ data, actions }: { data: CardData; actions: NavActions }) {
   return (
-    <div
+    <button
       class={`bt-grid-card${data.isActive ? ' is-active' : ''}${!data.imageUrl && !data.snippet ? ' bt-grid-card-compact' : ''}`}
       onClick={(e) => actions.openFile(data.file, e.ctrlKey || e.metaKey)}
+      onContextMenu={(e: MouseEvent) => { e.preventDefault(); actions.showContextMenu(data.file, e); }}
+      aria-label={data.label}
     >
       {(data.imageUrl || data.snippet) && (
         <div class="bt-grid-card-preview">
@@ -25,7 +27,7 @@ function GridCard({ data, actions }: { data: CardData; actions: NavActions }) {
       )}
       <div class="bt-grid-card-title">{data.label}</div>
       <div class="bt-grid-card-date">{formatGridDate(data.file.stat.mtime)}</div>
-    </div>
+    </button>
   );
 }
 
