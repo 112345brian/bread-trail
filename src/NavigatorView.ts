@@ -754,14 +754,13 @@ export class NavigatorView extends ItemView {
     for (const sec of this.settings.navigatorPinboardSections) {
       if (!sec.enabled) continue;
       const def = DEFAULTS[sec.type] ?? { label: sec.type, icon: 'file' };
-      const label = sec.label || def.label;
 
       switch (sec.type) {
         case 'favorites': {
           const cards = await this.buildPinboardFavoritesCards(activeFile, bc);
           if (cards.length > 0) {
             sections.push({
-              id: 'pb-favorites', label, icon: def.icon, cards,
+              id: 'pb-favorites', label: def.label, icon: def.icon, cards,
               isCollapsed: this.collapsedSections.has('pb-favorites'),
               sortMode: 'alpha', sortCycle: [], isChain: false,
             });
@@ -772,10 +771,7 @@ export class NavigatorView extends ItemView {
         case 'current': {
           const cards = await this.buildPinboardCurrentCards(activeFile, bc, sec.limit);
           if (cards.length > 0) {
-            // Use the active note's label as the section header if no custom label set
-            const sectionLabel = sec.label
-              ? sec.label
-              : (activeFile ? this.getLabel(activeFile) : def.label);
+            const sectionLabel = activeFile ? this.getLabel(activeFile) : def.label;
             sections.push({
               id: 'pb-current', label: sectionLabel, icon: def.icon, cards,
               isCollapsed: this.collapsedSections.has('pb-current'),
@@ -790,7 +786,7 @@ export class NavigatorView extends ItemView {
           const cards = await this.buildHomeRecentCards(activeFile, limit);
           if (cards.length > 0) {
             sections.push({
-              id: 'pb-recents', label, icon: def.icon, cards,
+              id: 'pb-recents', label: def.label, icon: def.icon, cards,
               isCollapsed: this.collapsedSections.has('pb-recents'),
               sortMode: 'mtime', sortCycle: [], isChain: false,
             });
@@ -803,7 +799,7 @@ export class NavigatorView extends ItemView {
           const cards = await this.buildPinboardRootsCards(activeFile, bc);
           if (cards.length > 0) {
             sections.push({
-              id: 'pb-roots', label, icon: def.icon, cards,
+              id: 'pb-roots', label: def.label, icon: def.icon, cards,
               isCollapsed: this.collapsedSections.has('pb-roots'),
               sortMode: 'alpha', sortCycle: [], isChain: false,
             });
@@ -815,10 +811,9 @@ export class NavigatorView extends ItemView {
           if (!sec.param) break;
           const tagCards = await this.buildPinboardTagCards(activeFile, sec.param, sec.limit);
           if (tagCards.length > 0) {
-            const secLabel = sec.label || `#${sec.param}`;
             const secId = `pb-tag-${sec.param}`;
             sections.push({
-              id: secId, label: secLabel, icon: 'tag', cards: tagCards,
+              id: secId, label: `#${sec.param}`, icon: 'tag', cards: tagCards,
               isCollapsed: this.collapsedSections.has(secId),
               sortMode: 'alpha', sortCycle: [], isChain: false,
             });
@@ -830,7 +825,7 @@ export class NavigatorView extends ItemView {
           if (!sec.param) break;
           const filterCards = await this.buildPinboardFilterCards(activeFile, sec.param, sec.limit);
           if (filterCards.length > 0) {
-            const secLabel = sec.label || sec.param;
+            const secLabel = sec.param;
             const secId = `pb-filter-${sec.param}`;
             sections.push({
               id: secId, label: secLabel, icon: 'filter', cards: filterCards,

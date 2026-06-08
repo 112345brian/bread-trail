@@ -11,8 +11,6 @@ export type ExplorerGestureAction = 'off' | 'parent' | 'children' | 'home';
 export interface PinboardSection {
   type: PinboardSectionType;
   enabled: boolean;
-  /** Override the section header label. Empty string = use default. */
-  label: string;
   /** Max items shown. 0 = use global default. Only meaningful for 'recents'/'tag'/'filter'. */
   limit: number;
   /** Tag name (for 'tag') or "key:value" / "key" pattern (for 'filter'). Unused for other types. */
@@ -232,10 +230,10 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   navigatorExcludeFiles: [],
   navigatorExcludeFrontmatter: [],
   navigatorPinboardSections: [
-    { type: 'favorites', enabled: true,  label: '', limit: 0,  param: '' },
-    { type: 'current',   enabled: true,  label: '', limit: 0,  param: '' },
-    { type: 'recents',   enabled: true,  label: '', limit: 10, param: '' },
-    { type: 'roots',     enabled: false, label: '', limit: 0,  param: '' },
+    { type: 'favorites', enabled: true,  limit: 0,  param: '' },
+    { type: 'current',   enabled: true,  limit: 0,  param: '' },
+    { type: 'recents',   enabled: true,  limit: 10, param: '' },
+    { type: 'roots',     enabled: false, limit: 0,  param: '' },
   ],
   navigatorShowSiblings: false,
 };
@@ -384,7 +382,6 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
           result.push({
             type,
             enabled: typeof s['enabled'] === 'boolean' ? s['enabled'] : true,
-            label:   typeof s['label']   === 'string'  ? s['label']   : '',
             limit:   typeof s['limit']   === 'number' && (s['limit'] as number) >= 0
               ? Math.floor(s['limit'] as number) : 0,
             param,
@@ -394,7 +391,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
         for (const type of fixedTypes) {
           if (!seenFixed.has(type)) {
             const def = DEFAULT_SETTINGS.navigatorPinboardSections.find((s) => s.type === type);
-            result.push(def ?? { type, enabled: false, label: '', limit: 0, param: '' });
+            result.push(def ?? { type, enabled: false, limit: 0, param: '' });
           }
         }
         return result;
@@ -1132,15 +1129,6 @@ class BreadTrailSettingTab extends PluginSettingTab {
           });
       }
 
-      // Custom label for every section
-      new Setting(el)
-        .setName('Custom label')
-        .setDesc(`Override the section header. Leave blank to use default.`)
-        .addText((t) => {
-          t.setPlaceholder(def.name);
-          t.setValue(sec.label);
-          t.onChange(async (v) => { sec.label = v.trim(); await this.save(); });
-        });
     }
 
     // ── Add custom section buttons ─────────────────────────────────────────
@@ -1152,7 +1140,7 @@ class BreadTrailSettingTab extends PluginSettingTab {
       btn.prepend(iconEl);
       setIcon(iconEl, icon);
       btn.addEventListener('click', async () => {
-        sections.push({ type, enabled: true, label: '', limit: 0, param: '' });
+        sections.push({ type, enabled: true, limit: 0, param: '' });
         await this.save();
         this.display();
       });
