@@ -259,6 +259,32 @@ export default class BreadTrail extends Plugin {
     });
 
     this.addCommand({
+      id: 'navigator-go-to-active',
+      name: 'Navigator: go to active note',
+      callback: async () => {
+        const side = Platform.isMobile ? this.settings.mobileNavigatorSide : 'right';
+        await this.openNavigatorInSidebar(side);
+        this.getNavigatorView()?.invokeGoToActive();
+      },
+    });
+
+    this.addCommand({
+      id: 'navigator-toggle-follow-mode',
+      name: 'Navigator: toggle follow mode',
+      callback: () => { this.getNavigatorView()?.invokeToggleFollowMode(); },
+    });
+
+    this.addCommand({
+      id: 'navigator-toggle-filter',
+      name: 'Navigator: toggle filter',
+      callback: async () => {
+        const side = Platform.isMobile ? this.settings.mobileNavigatorSide : 'right';
+        await this.openNavigatorInSidebar(side);
+        this.getNavigatorView()?.invokeToggleFilter();
+      },
+    });
+
+    this.addCommand({
       id: 'show-floating-table-of-contents',
       name: 'Show floating table of contents',
       checkCallback: (checking) => {
@@ -373,6 +399,7 @@ export default class BreadTrail extends Plugin {
       this.settings.navigatorFavorites,
       this.settings.navigatorFavoritesParentNote,
       this.settings.explorerDoubleTapToOpen,
+      this.settings,
       () => { this.activeExplorerModal = null; },
       effectiveStartFile,
       effectiveRootFolder,
@@ -726,27 +753,37 @@ export default class BreadTrail extends Plugin {
    */
   private getBcAncestorChain(file: TFile, bc: BreadcrumbsPlugin): TFile[] {
     const seen = new Set<string>([file.path]);
-    const parents: TFile[] = [];
+    const chain: TFile[] = [];
 
-    // Collect all direct `up` parents (outgoing up edges from this file)
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'up') continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path || seen.has(path)) continue;
-      const found = this.app.vault.getAbstractFileByPath(path);
-      if (found instanceof TFile) { seen.add(path); parents.push(found); }
+    /** Return the first `up` parent of `node` not yet seen, or null. */
+    const getParent = (node: TFile): TFile | null => {
+      for (const e of bc.graph.get_outgoing_edges(node.path).to_array()) {
+        if (e.edge_type?.toLowerCase() !== 'up') continue;
+        const path = e.target_path?.(bc.graph) ?? e.target;
+        if (!path || seen.has(path)) continue;
+        const found = this.app.vault.getAbstractFileByPath(path);
+        if (found instanceof TFile) return found;
+      }
+      for (const e of bc.graph.get_incoming_edges(node.path).to_array()) {
+        if (e.edge_type?.toLowerCase() !== 'down') continue;
+        const path = e.source_path?.(bc.graph) ?? e.source;
+        if (!path || seen.has(path)) continue;
+        const found = this.app.vault.getAbstractFileByPath(path);
+        if (found instanceof TFile) return found;
+      }
+      return null;
+    };
+
+    let current = file;
+    for (let hop = 0; hop < 20; hop++) {
+      const parent = getParent(current);
+      if (!parent) break;
+      seen.add(parent.path);
+      chain.unshift(parent); // prepend so chain is oldest → immediate parent
+      current = parent;
     }
 
-    // Also collect parents implied by incoming `down` edges (reciprocal links)
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'down') continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path || seen.has(path)) continue;
-      const found = this.app.vault.getAbstractFileByPath(path);
-      if (found instanceof TFile) { seen.add(path); parents.push(found); }
-    }
-
-    return parents;
+    return chain;
   }
 
   private getBcLabel(file: TFile): string {

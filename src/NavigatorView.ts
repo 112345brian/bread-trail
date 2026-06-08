@@ -90,6 +90,7 @@ export class NavigatorView extends ItemView {
     super(leaf);
     this.mode = settings.navigatorMode;
     this.previewExpanded = settings.navigatorPreviewExpanded;
+    this.followMode = settings.navigatorFollowMode;
   }
 
   getViewType()    { return NAVIGATOR_VIEW_TYPE; }
@@ -129,6 +130,12 @@ export class NavigatorView extends ItemView {
     this.imageCache.clear();
     void this.refresh();
   }
+
+  // ── Public action entry points (for command palette) ──────────────────────
+
+  invokeGoToActive()        { this.buildActions().goToActive(); }
+  invokeToggleFollowMode()  { this.buildActions().toggleFollowMode(); }
+  invokeToggleFilter()      { this.buildActions().toggleFilter(); }
 
   scheduleRefresh(delay = 80) {
     if (this.refreshTimer) window.clearTimeout(this.refreshTimer);
@@ -1207,6 +1214,8 @@ export class NavigatorView extends ItemView {
 
       toggleFollowMode: () => {
         this.followMode = !this.followMode;
+        this.settings.navigatorFollowMode = this.followMode;
+        void this.saveSettings();
         if (this.followMode) this.followActiveFile();
         else { this.followTargets = []; void this.refresh(); }
       },

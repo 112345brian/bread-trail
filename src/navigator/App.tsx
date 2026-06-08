@@ -167,8 +167,15 @@ export function NavigatorApp({ data, actions, app, component }: AppProps) {
     }
     if (groups) {
       if (useGrid) {
-        const allCards = groups.flatMap((g) => g.cards);
-        return <GridView cards={allCards} actions={actions} small={smallGrid} />;
+        // In grid mode keep group labels — render each group with its own header + grid
+        return groups.map((g, i) => (
+          <div key={`group:${i}:${g.label}`} class="bread-trail-nav-group">
+            <div class="bread-trail-nav-group-header">
+              <span class="bread-trail-nav-group-label">{g.label}</span>
+            </div>
+            <GridView cards={g.cards} actions={actions} small={smallGrid} />
+          </div>
+        ));
       }
       return groups.map((g, i) => (
         <GroupEl key={`group:${i}:${g.label}`} group={g} actions={actions} app={app} component={component} />

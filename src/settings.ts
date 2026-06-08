@@ -147,6 +147,8 @@ export interface BreadTrailSettings {
   navigatorPinboardSections: PinboardSection[];
   /** Show a Siblings section in Context mode (notes sharing the same parent). */
   navigatorShowSiblings: boolean;
+  /** Persist the navigator's follow-mode state across reloads. */
+  navigatorFollowMode: boolean;
 }
 
 type DepthSettingKey = 'parentDepth' | 'childDepth';
@@ -230,6 +232,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
     { type: 'roots',     enabled: false, limit: 0,  param: '' },
   ],
   navigatorShowSiblings: false,
+  navigatorFollowMode: false,
 };
 
 function normalizeDepth(value: number | undefined, fallback: number): number {
@@ -402,6 +405,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
       return DEFAULT_SETTINGS.navigatorPinboardSections.map((s) => ({ ...s }));
     })(),
     navigatorShowSiblings: typeof settings.navigatorShowSiblings === 'boolean' ? settings.navigatorShowSiblings : false,
+    navigatorFollowMode: typeof settings.navigatorFollowMode === 'boolean' ? settings.navigatorFollowMode : false,
   };
 }
 

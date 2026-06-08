@@ -2,17 +2,49 @@ import { App, Modal, Menu, TFile, setIcon } from 'obsidian';
 import { render, h } from 'preact';
 import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
 import type { BreadcrumbsPlugin } from './main';
+import type { BreadTrailSettings } from './settings';
 import { shouldIncludeVaultRoot } from './homepageRoots';
 
 // ── BC graph helpers (self-contained so we don't depend on NavigatorView) ─────
 
-function getChildren(file: TFile, bc: BreadcrumbsPlugin, app: App): TFile[] {
+/** Mirror of NavigatorView.isExcluded — keeps the modal consistent with the sidebar. */
+function isExcluded(file: TFile, app: App, settings: BreadTrailSettings): boolean {
+  const fm: unknown = app.metadataCache.getFileCache(file)?.frontmatter;
+  const bt = fm && typeof fm === 'object' && !Array.isArray(fm)
+    ? (fm as Record<string, unknown>)['bread-trail']
+    : undefined;
+  if (typeof bt === 'object' && bt !== null && (bt as Record<string, unknown>)['hidden'] === true) return true;
+  if (settings.navigatorExcludeFiles.includes(file.path)) return true;
+  for (const folder of settings.navigatorExcludeFolders) {
+    const prefix = folder.endsWith('/') ? folder : folder + '/';
+    if (file.path.startsWith(prefix)) return true;
+  }
+  if (settings.navigatorExcludeFrontmatter.length > 0) {
+    const frontmatter = fm && typeof fm === 'object' && !Array.isArray(fm) ? fm as Record<string, unknown> : {};
+    for (const pattern of settings.navigatorExcludeFrontmatter) {
+      const colonIdx = pattern.indexOf(':');
+      if (colonIdx === -1) {
+        const val = frontmatter[pattern];
+        if (val !== undefined && val !== null && val !== false && val !== '' && val !== 0) return true;
+      } else {
+        const key = pattern.slice(0, colonIdx).trim();
+        const expected = pattern.slice(colonIdx + 1).trim();
+        const val = frontmatter[key];
+        if ((typeof val === 'string' || typeof val === 'number') && String(val).trim() === expected) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function getChildren(file: TFile, bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings): TFile[] {
   const seen = new Set<string>([file.path]);
   const children: TFile[] = [];
   const add = (path: string | undefined) => {
     if (!path || seen.has(path)) return;
     const f = app.vault.getAbstractFileByPath(path);
     if (!(f instanceof TFile)) return;
+    if (isExcluded(f, app, settings)) return;
     seen.add(path);
     children.push(f);
   };
@@ -40,13 +72,14 @@ function hasParent(file: TFile, bc: BreadcrumbsPlugin): boolean {
     bc.graph.get_incoming_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'down');
 }
 
-function getVaultRoots(bc: BreadcrumbsPlugin, app: App, rootFolder = ''): TFile[] {
+function getVaultRoots(bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings, rootFolder = ''): TFile[] {
   const roots: TFile[] = [];
   for (const file of app.vault.getMarkdownFiles()) {
     if (shouldIncludeVaultRoot({
       path: file.path,
       hasChildren: hasChildren(file, bc),
       hasParent: hasParent(file, bc),
+      excluded: isExcluded(file, app, settings),
     }, rootFolder)) roots.push(file);
   }
   return roots.sort((a, b) => a.basename.localeCompare(b.basename));
@@ -96,10 +129,27 @@ function getFavorites(
     });
 }
 
-function getRecents(app: App, count: number): TFile[] {
-  return app.vault.getMarkdownFiles()
-    .sort((a, b) => b.stat.mtime - a.stat.mtime)
-    .slice(0, count);
+function getRecents(app: App, count: number, settings: BreadTrailSettings): TFile[] {
+  const sortField = settings.navigatorRecentSortField;
+  let files = app.vault.getMarkdownFiles().filter((f) => !isExcluded(f, app, settings));
+  if (sortField) {
+    files.sort((a, b) => {
+      const getFm = (f: TFile) => {
+        const fm = app.metadataCache.getFileCache(f)?.frontmatter;
+        const val = fm ? (fm as Record<string, unknown>)[sortField] : undefined;
+        return typeof val === 'string' ? val : typeof val === 'number' ? String(val) : '';
+      };
+      const fa = getFm(a);
+      const fb = getFm(b);
+      if (!fa && !fb) return b.stat.mtime - a.stat.mtime;
+      if (!fa) return 1;
+      if (!fb) return -1;
+      return fb.localeCompare(fa);
+    });
+  } else {
+    files.sort((a, b) => b.stat.mtime - a.stat.mtime);
+  }
+  return files.slice(0, count);
 }
 
 type ExplorerSortMode = 'alpha' | 'alpha-desc' | 'date-modified' | 'date-created';
@@ -116,9 +166,11 @@ interface TileProps {
   onLongPress?: () => void;
   /** When true, double-tap opens the note directly instead of requiring a long-press. */
   doubleTapToOpen?: boolean;
+  /** Optional metadata subtitle shown below the label. */
+  meta?: string;
 }
 
-function Tile({ file, isFolder, isActive, label, onTap, onLongPress, doubleTapToOpen }: TileProps) {
+function Tile({ file, isFolder, isActive, label, onTap, onLongPress, doubleTapToOpen, meta }: TileProps) {
   const longPressTimer = useRef<number | null>(null);
   const singleTapTimer = useRef<number | null>(null);
   const didLongPress   = useRef(false);
@@ -183,6 +235,7 @@ function Tile({ file, isFolder, isActive, label, onTap, onLongPress, doubleTapTo
         }} />
       </div>
       <span class="bt-explorer-tile-label">{label}</span>
+      {meta && <span class="bt-explorer-tile-meta">{meta}</span>}
     </button>
   );
 }
@@ -192,6 +245,7 @@ function Tile({ file, isFolder, isActive, label, onTap, onLongPress, doubleTapTo
 interface GridProps {
   app: App;
   bc: BreadcrumbsPlugin;
+  settings: BreadTrailSettings;
   activeFile: TFile | null;
   tileMinWidth: number;
   startMode: 'active-parent' | 'home' | 'roots';
@@ -209,7 +263,7 @@ interface GridProps {
   startFile?: TFile | null;
 }
 
-function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, showFavorites, showRecents, recentsCount, favoritePaths, favoritesParentNote, onOpen, onTitleChange, doubleTapToOpen, rootFolder, startFile }: GridProps) {
+function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, homeNote, showFavorites, showRecents, recentsCount, favoritePaths, favoritesParentNote, onOpen, onTitleChange, doubleTapToOpen, rootFolder, startFile }: GridProps) {
   const [localTileWidth, setLocalTileWidth] = useState(tileMinWidth);
   const [sortMode, setSortMode] = useState<ExplorerSortMode>('alpha');
 
@@ -266,7 +320,7 @@ function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, 
   });
 
   const current = stack[stack.length - 1] ?? null;
-  const rawItems: TFile[] = current ? getChildren(current, bc, app) : getVaultRoots(bc, app, rootFolder);
+  const rawItems: TFile[] = current ? getChildren(current, bc, app, settings) : getVaultRoots(bc, app, settings, rootFolder);
   const items = [...rawItems].sort((a, b) => {
     switch (sortMode) {
       case 'alpha-desc':    return b.basename.localeCompare(a.basename);
@@ -372,8 +426,21 @@ function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, 
       {/* Home-level extras: Favorites + Recents */}
       {current === null && (() => {
         const favFiles = showFavorites ? getFavorites(app, bc, favoritePaths, favoritesParentNote) : [];
-        const recentFiles = showRecents ? getRecents(app, recentsCount) : [];
+        const recentFiles = showRecents ? getRecents(app, recentsCount, settings) : [];
         if (favFiles.length === 0 && recentFiles.length === 0) return null;
+        const favMetaProps = settings.navigatorFavoritesMetaProperties;
+        const getFavMeta = (file: TFile): string | undefined => {
+          if (!favMetaProps.length) return undefined;
+          const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+          if (!fm) return undefined;
+          const parts = favMetaProps
+            .map((k) => {
+              const v = (fm as Record<string, unknown>)[k];
+              return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
+            })
+            .filter(Boolean);
+          return parts.length ? parts.join(' · ') : undefined;
+        };
         return (
           <>
             {favFiles.length > 0 && (
@@ -397,7 +464,8 @@ function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, 
                         label={file.basename}
                         onTap={() => isFolder ? drillIn(file) : onOpen(file)}
                         onLongPress={isFolder ? () => onOpen(file) : undefined}
-                doubleTapToOpen={doubleTapToOpen}
+                        doubleTapToOpen={doubleTapToOpen}
+                        meta={getFavMeta(file)}
                       />
                     );
                   })}
@@ -440,6 +508,7 @@ function ExplorerGrid({ app, bc, activeFile, tileMinWidth, startMode, homeNote, 
 
 export class ExplorerModal extends Modal {
   private bc: BreadcrumbsPlugin;
+  private settings: BreadTrailSettings;
   private tileMinWidth: number;
   private startMode: 'active-parent' | 'home' | 'roots';
   private homeNote: string;
@@ -465,12 +534,14 @@ export class ExplorerModal extends Modal {
     favoritePaths: string[],
     favoritesParentNote: string,
     doubleTapToOpen: boolean,
+    settings: BreadTrailSettings,
     onClosed?: () => void,
     startFile?: TFile | null,
     rootFolder?: string,
   ) {
     super(app);
     this.bc = bc;
+    this.settings = settings;
     this.tileMinWidth = tileMinWidth;
     this.startMode = startMode;
     this.homeNote = homeNote;
@@ -494,6 +565,7 @@ export class ExplorerModal extends Modal {
       h(ExplorerGrid, {
         app: this.app,
         bc: this.bc,
+        settings: this.settings,
         activeFile,
         tileMinWidth: this.tileMinWidth,
         onOpen: (file: TFile) => {
