@@ -1347,12 +1347,12 @@ export class NavigatorView extends ItemView {
   }
 
   /**
-   * Cold-start-safe stack seeder: sets `browserStack` only, never touches
-   * `browserViewMode`. Called from `onOpen()` where sub-mode must stay 'bc'.
-   * Full `initBrowserStack` (which can switch to 'files') is only for active
-   * mode transitions triggered by user interaction.
+   * Cold-start-safe initialiser: seeds `browserStack` and `browserRootFolder`
+   * for BC hierarchy mode. Never touches `browserViewMode` — sub-mode is not
+   * persisted and must always reset to 'bc' on cold start.
    */
   private initBrowserStackBcOnly(activeFile: TFile | null, bc: BreadcrumbsPlugin | null) {
+    this.browserRootFolder = null;
     const homePath = this.settings.homeNote;
     if (homePath) {
       const resolved = this.app.vault.getAbstractFileByPath(homePath) ?? null;
@@ -1361,8 +1361,8 @@ export class NavigatorView extends ItemView {
         return;
       }
       if (resolved instanceof TFolder) {
-        // Folder homeNote: leave stack empty (vault roots) in BC mode.
-        // The file-browser sub-mode is not persisted, so don't switch to it.
+        // Folder home: BC browser scoped to this folder (shows parentless notes within it)
+        this.browserRootFolder = resolved.path === '/' || resolved.path === '' ? null : resolved.path;
         this.browserStack = [];
         return;
       }
@@ -1405,9 +1405,10 @@ export class NavigatorView extends ItemView {
         this.app.vault.getAbstractFileByPath(homePath.replace(/\/?$/, '')) ??
         null;
       if (resolved instanceof TFolder) {
-        // Folder home: switch to file-system browser at that folder
-        this.browserViewMode = 'files';
-        this.folderStack = resolved.path === '/' || resolved.path === '' ? [] : [resolved.path];
+        // Folder home: BC browser scoped to this folder (shows parentless notes within it)
+        this.browserViewMode = 'bc';
+        this.browserRootFolder = resolved.path === '/' || resolved.path === '' ? null : resolved.path;
+        this.browserStack = [];
         return;
       }
       if (resolved instanceof TFile) {
