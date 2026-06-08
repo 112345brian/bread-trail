@@ -1,5 +1,9 @@
 # Obsidian community plugin
 
+> **BreadTrail-specific architecture, invariants, and gotchas are in
+> [`DEVELOPMENT.md`](./DEVELOPMENT.md). Read it before making changes —
+> it documents patterns that code review won't catch.**
+
 ## Project overview
 
 - Target: Obsidian Community Plugin (TypeScript → bundled JavaScript).
