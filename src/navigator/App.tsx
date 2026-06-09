@@ -73,7 +73,7 @@ function BrowserHeader({ data, actions }: { data: ToolbarData; actions: NavActio
   return (
     <div class="bread-trail-nav-browser-header">
       <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
-        aria-label="Go up" onClick={actions.browserBack}>
+        aria-label="Go up" onClick={(e) => actions.browserBack(e)}>
         <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
       </button>
       <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>

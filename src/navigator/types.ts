@@ -96,7 +96,7 @@ export interface NavActions {
   togglePreview: () => void;
   cycleSort: (sectionId: string) => void;
   toggleCollapse: (sectionId: string) => void;
-  browserBack: () => void;
+  browserBack: (e: MouseEvent) => void;
   browserCycleSort: () => void;
   setBrowserSortMode: (mode: SortMode) => void;
   showContextMenu: (file: TFile, e: MouseEvent) => void;

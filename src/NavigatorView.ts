@@ -331,9 +331,18 @@ export class NavigatorView extends ItemView {
         const isRootsView = this.browserStack.length === 0;
         const currentFolder = this.browserStack[this.browserStack.length - 1];
         browserIsRoots = isRootsView && this.followTargets.length === 0;
-        browserTitle = this.followTargets.length > 0
-          ? this.followTargets.map((t) => this.getLabel(t)).join(', ')
-          : isRootsView ? (this.browserRootFolder ?? 'Vault') : (currentFolder ? this.getLabel(currentFolder) : '');
+        // Title: follow-mode uses parent names; peer-group view shows folder +
+        // its parent context; root/vault views show a location label.
+        if (this.followTargets.length > 0) {
+          browserTitle = this.followTargets.map((t) => this.getLabel(t)).join(', ');
+        } else if (!isRootsView && currentFolder && bc) {
+          const parents = this.getAllParentFiles(currentFolder, bc);
+          browserTitle = parents.length > 0
+            ? parents.map((p) => this.getLabel(p)).join(', ')
+            : this.getLabel(currentFolder);
+        } else {
+          browserTitle = isRootsView ? (this.browserRootFolder ?? 'Vault') : '';
+        }
         // Vault roots is always reachable as the implicit parent of every
         // parentless note, so the back button is enabled whenever we're not
         // already at the roots view.
@@ -532,6 +541,49 @@ export class NavigatorView extends ItemView {
 
     // Folder view
     const folder = this.browserStack[this.browserStack.length - 1]!;
+
+    // If the folder has parents, show its PEER GROUP — the union of all children
+    // across all parents — so the user sees the note in context with siblings from
+    // every hierarchy it belongs to (e.g. a note with up:Statistics and up:Programming
+    // shows all stats and programming siblings in one merged view).
+    const parents = this.getAllParentFiles(folder, bc);
+    if (parents.length > 0) {
+      const seen = new Set<string>(parents.map((p) => p.path)); // exclude parent notes themselves
+      const peerGroup: NavNote[] = [];
+      for (const parent of parents) {
+        for (const e of bc.graph.get_outgoing_edges(parent.path).to_array()) {
+          if (e.edge_type?.toLowerCase() !== 'down') continue;
+          const path = e.target_path?.(bc.graph) ?? e.target;
+          if (!path || seen.has(path)) continue;
+          const f = this.app.vault.getAbstractFileByPath(path);
+          if (!(f instanceof TFile) || isExcluded(f, this.app, this.settings)) continue;
+          seen.add(path);
+          peerGroup.push({ file: f, relation: 'child' });
+        }
+        for (const e of bc.graph.get_incoming_edges(parent.path).to_array()) {
+          if (e.edge_type?.toLowerCase() !== 'up') continue;
+          const path = e.source_path?.(bc.graph) ?? e.source;
+          if (!path || seen.has(path)) continue;
+          const f = this.app.vault.getAbstractFileByPath(path);
+          if (!(f instanceof TFile) || isExcluded(f, this.app, this.settings)) continue;
+          seen.add(path);
+          peerGroup.push({ file: f, relation: 'child' });
+        }
+      }
+      if (peerGroup.length === 0) return { sections: [], emptyMessage: 'Nothing here.' };
+      const override = this.getChildSortOverride(folder);
+      if (override) this.applyChildSortOverride('browser-child', override, cycle);
+      const sort = this.getSort('browser-child', cycle);
+      this.assignSeqPositions(peerGroup, bc);
+      const flatCards = await Promise.all(
+        this.sortNotes(peerGroup, sort).map((n) =>
+          this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) }),
+        ),
+      );
+      return { sections: [], flatCards };
+    }
+
+    // Root note (no parents): show the folder's own children
     const children = this.getFolderChildren(folder, bc);
     if (children.length === 0) {
       return { sections: [], emptyMessage: 'Nothing here.' };
@@ -1195,31 +1247,53 @@ export class NavigatorView extends ItemView {
         void this.refresh();
       },
 
-      browserBack: () => {
+      browserBack: (e: MouseEvent) => {
         const bc = this.getBc();
         if (this.browserViewMode === 'files') {
           this.folderStack.pop();
-        } else {
-          const currentFolder = this.browserStack[this.browserStack.length - 1];
-          if ((this.browserRootFolder !== null || this.settings.navigatorBrowseStart === 'roots') && this.browserStack.length === 1) {
-            this.browserStack = [];
-          } else if (this.browserStack.length > 1) {
-            this.browserStack.pop();
-          } else if (bc && currentFolder) {
-            const parent = this.getFirstParentFile(currentFolder, bc);
-            if (parent) {
-              this.browserStack[0] = parent;
-            } else {
-              // No BC parent — vault roots is the implicit parent of every
-              // root-level note, so going back lands on the roots view.
-              this.browserStack = [];
-            }
-          } else {
-            // bc unavailable or no note on stack — fall back to vault roots
-            this.browserStack = [];
-          }
+          void this.refresh();
+          return;
         }
-        void this.refresh();
+
+        const currentFolder = this.browserStack[this.browserStack.length - 1];
+
+        // If we have a known navigation history, just pop it
+        if (this.browserStack.length > 1) {
+          this.browserStack.pop();
+          void this.refresh();
+          return;
+        }
+
+        // Going up from a single-item stack to roots
+        if ((this.browserRootFolder !== null || this.settings.navigatorBrowseStart === 'roots') && this.browserStack.length === 1) {
+          this.browserStack = [];
+          void this.refresh();
+          return;
+        }
+
+        if (bc && currentFolder) {
+          const parents = this.getAllParentFiles(currentFolder, bc);
+          if (parents.length === 0) {
+            this.browserStack = [];
+            void this.refresh();
+          } else if (parents.length === 1) {
+            this.browserStack[0] = parents[0]!;
+            void this.refresh();
+          } else {
+            // Multiple parents — let the user pick which hierarchy to go up into
+            const menu = new Menu();
+            for (const parent of parents) {
+              menu.addItem((item) =>
+                item.setTitle(parent.basename).setIcon('folder-open')
+                  .onClick(() => { this.browserStack[0] = parent; void this.refresh(); }),
+              );
+            }
+            menu.showAtMouseEvent(e);
+          }
+        } else {
+          this.browserStack = [];
+          void this.refresh();
+        }
       },
 
       browserCycleSort: () => {
@@ -1814,6 +1888,27 @@ export class NavigatorView extends ItemView {
       }, folder)) roots.push(file);
     }
     return roots.sort((a, b) => a.basename.localeCompare(b.basename));
+  }
+
+  /** Returns all BC parents of `file` (outgoing `up` + incoming `down`), up to `limit`. */
+  private getAllParentFiles(file: TFile, bc: BreadcrumbsPlugin, limit = 4): TFile[] {
+    const seen = new Set<string>([file.path]);
+    const parents: TFile[] = [];
+    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
+      if (e.edge_type?.toLowerCase() !== 'up') continue;
+      const path = e.target_path?.(bc.graph) ?? e.target;
+      if (!path || seen.has(path)) continue;
+      const f = this.app.vault.getAbstractFileByPath(path);
+      if (f instanceof TFile) { seen.add(path); parents.push(f); if (parents.length >= limit) return parents; }
+    }
+    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
+      if (e.edge_type?.toLowerCase() !== 'down') continue;
+      const path = e.source_path?.(bc.graph) ?? e.source;
+      if (!path || seen.has(path)) continue;
+      const f = this.app.vault.getAbstractFileByPath(path);
+      if (f instanceof TFile) { seen.add(path); parents.push(f); if (parents.length >= limit) return parents; }
+    }
+    return parents;
   }
 
   private getFirstParentFile(file: TFile, bc: BreadcrumbsPlugin): TFile | null {

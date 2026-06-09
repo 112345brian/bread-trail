@@ -158,7 +158,7 @@ export function Toolbar({ data, actions, isMobile }: ToolbarProps) {
       {!isMobile && isBrowser && (
         <div class="bread-trail-nav-browser-nav">
           <button class="bread-trail-nav-back-btn" disabled={!browserCanGoBack}
-            onClick={actions.browserBack}>
+            onClick={(e) => actions.browserBack(e)}>
             <span ref={(el: HTMLSpanElement | null) => { if (el) setIcon(el, 'arrow-left'); }} />
           </button>
           <span class={`bread-trail-nav-browser-title${browserIsRoots ? ' is-roots' : ''}`}>
