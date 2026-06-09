@@ -12,6 +12,7 @@ import { extractContentSnippet, extractFirstImageLink, formatDateValue, isExclud
 import { shouldIncludeVaultRoot } from './homepageRoots';
 import { getHomepageTargetForFile } from './homepageUtils';
 import type { HomepageTarget } from './homepageUtils';
+import { getParentPaths, getChildPaths, hasParent as bcHasParent, hasChildren as bcHasChildren, isDirectChild, getChainPathIds } from './bcGraph';
 
 export const NAVIGATOR_VIEW_TYPE = 'bread-trail-navigator';
 
@@ -200,22 +201,9 @@ export class NavigatorView extends ItemView {
     if (!bc) { this.scheduleRefresh(); return; }
 
     // Collect all UP parents of the active file
-    const seen = new Set<string>([file.path]);
-    const parents: TFile[] = [];
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'up') continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path || seen.has(path)) continue;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) { seen.add(path); parents.push(f); }
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'down') continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path || seen.has(path)) continue;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) { seen.add(path); parents.push(f); }
-    }
+    const parents = getParentPaths(bc.graph, file.path)
+      .map((p) => this.app.vault.getAbstractFileByPath(p))
+      .filter((f): f is TFile => f instanceof TFile);
 
     if (parents.length > 0) {
       this.followTargets = parents;
@@ -496,22 +484,11 @@ export class NavigatorView extends ItemView {
       const seen = new Set<string>(this.followTargets.map((t) => t.path));
       const children: NavNote[] = [];
       for (const target of this.followTargets) {
-        for (const e of bc.graph.get_outgoing_edges(target.path).to_array()) {
-          if (e.edge_type?.toLowerCase() !== 'down') continue;
-          const path = e.target_path?.(bc.graph) ?? e.target;
-          if (!path || seen.has(path)) continue;
-          const f = this.app.vault.getAbstractFileByPath(path);
+        for (const p of getChildPaths(bc.graph, target.path)) {
+          if (seen.has(p)) continue;
+          const f = this.app.vault.getAbstractFileByPath(p);
           if (!(f instanceof TFile) || isExcluded(f, this.app, this.settings)) continue;
-          seen.add(path);
-          children.push({ file: f, relation: 'child' });
-        }
-        for (const e of bc.graph.get_incoming_edges(target.path).to_array()) {
-          if (e.edge_type?.toLowerCase() !== 'up') continue;
-          const path = e.source_path?.(bc.graph) ?? e.source;
-          if (!path || seen.has(path)) continue;
-          const f = this.app.vault.getAbstractFileByPath(path);
-          if (!(f instanceof TFile) || isExcluded(f, this.app, this.settings)) continue;
-          seen.add(path);
+          seen.add(p);
           children.push({ file: f, relation: 'child' });
         }
       }
@@ -778,18 +755,7 @@ export class NavigatorView extends ItemView {
     const bt = this.getBreadTrailFm(file);
     if (bt?.['favorite'] === true) return true;
     const parentPath = this.settings.navigatorFavoritesParentNote.trim();
-    if (parentPath && bc) {
-      for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-        if (e.edge_type?.toLowerCase() !== 'up') continue;
-        const p = e.target_path?.(bc.graph) ?? e.target;
-        if (p === parentPath) return true;
-      }
-      for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-        if (e.edge_type?.toLowerCase() !== 'down') continue;
-        const p = e.source_path?.(bc.graph) ?? e.source;
-        if (p === parentPath) return true;
-      }
-    }
+    if (parentPath && bc) return isDirectChild(bc.graph, file.path, parentPath);
     return false;
   }
 
@@ -1587,18 +1553,7 @@ export class NavigatorView extends ItemView {
   // ── Chain traversal ────────────────────────────────────────────────────────
 
   private getChainPaths(file: TFile, bc: BreadcrumbsPlugin): string[] {
-    const paths = new Set<string>();
-    const checkEdgeType = (t: string | undefined) => {
-      const lower = t?.toLowerCase() ?? '';
-      if (lower === 'next' || lower === 'prev') {
-        paths.add('');
-      } else if (lower.startsWith('next.') || lower.startsWith('prev.')) {
-        paths.add(lower.split('.').slice(1).join('.'));
-      }
-    };
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) checkEdgeType(e.edge_type);
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) checkEdgeType(e.edge_type);
-    return [...paths].sort();
+    return [...getChainPathIds(bc.graph, file.path)].sort();
   }
 
   private findPrevForPath(file: TFile, bc: BreadcrumbsPlugin, chainPath: string, seen: Set<string>): TFile | null {
@@ -1716,54 +1671,26 @@ export class NavigatorView extends ItemView {
     }
 
     const seen = new Set<string>([file.path, ...chainFilePaths]);
-    const parents: NavNote[] = [];
-    const children: NavNote[] = [];
-
-    const add = (path: string | undefined, arr: NavNote[], relation: NavRelation) => {
-      if (!path || seen.has(path)) return;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (!(f instanceof TFile)) return;
-      if (isExcluded(f, this.app, this.settings)) return;
-      seen.add(path);
-      arr.push({ file: f, relation });
+    const toNote = (p: string, relation: NavRelation): NavNote | null => {
+      if (seen.has(p)) return null;
+      const f = this.app.vault.getAbstractFileByPath(p);
+      if (!(f instanceof TFile) || isExcluded(f, this.app, this.settings)) return null;
+      seen.add(p);
+      return { file: f, relation };
     };
-
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      const type = e.edge_type?.toLowerCase();
-      if (type === 'up')   add(path, parents, 'parent');
-      if (type === 'down') add(path, children, 'child');
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      const type = e.edge_type?.toLowerCase();
-      if (type === 'up')   add(path, children, 'child');
-      if (type === 'down') add(path, parents, 'parent');
-    }
+    const parents: NavNote[] = getParentPaths(bc.graph, file.path)
+      .map((p) => toNote(p, 'parent')).filter((n): n is NavNote => n !== null);
+    const children: NavNote[] = getChildPaths(bc.graph, file.path)
+      .map((p) => toNote(p, 'child')).filter((n): n is NavNote => n !== null);
 
     return { parents, chains, children };
   }
 
   private getFolderChildren(folder: TFile, bc: BreadcrumbsPlugin): NavNote[] {
-    const children: NavNote[] = [];
-    const seen = new Set<string>([folder.path]);
-
-    const add = (path: string | undefined) => {
-      if (!path || seen.has(path)) return;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (!(f instanceof TFile)) return;
-      if (isExcluded(f, this.app, this.settings)) return;
-      seen.add(path);
-      children.push({ file: f, relation: 'child' });
-    };
-
-    for (const e of bc.graph.get_outgoing_edges(folder.path).to_array()) {
-      if (e.edge_type?.toLowerCase() === 'down') add(e.target_path?.(bc.graph) ?? e.target);
-    }
-    for (const e of bc.graph.get_incoming_edges(folder.path).to_array()) {
-      if (e.edge_type?.toLowerCase() === 'up') add(e.source_path?.(bc.graph) ?? e.source);
-    }
-
+    const children: NavNote[] = getChildPaths(bc.graph, folder.path)
+      .map((p) => this.app.vault.getAbstractFileByPath(p))
+      .filter((f): f is TFile => f instanceof TFile && !isExcluded(f, this.app, this.settings))
+      .map((f): NavNote => ({ file: f, relation: 'child' }));
     this.assignSeqPositions(children, bc);
     return children;
   }
@@ -1812,26 +1739,17 @@ export class NavigatorView extends ItemView {
   }
 
   private hasChildren(file: TFile, bc: BreadcrumbsPlugin): boolean {
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() === 'down') return true;
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() === 'up') return true;
-    }
-    return false;
+    return bcHasChildren(bc.graph, file.path);
   }
 
   private getVaultRoots(bc: BreadcrumbsPlugin, rootFolder = ''): TFile[] {
     const folder = rootFolder.trim().replace(/^\/+|\/+$/g, '');
     const roots: TFile[] = [];
     for (const file of this.app.vault.getMarkdownFiles()) {
-      const hasParent =
-        bc.graph.get_outgoing_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'up') ||
-        bc.graph.get_incoming_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'down');
       if (shouldIncludeVaultRoot({
         path: file.path,
-        hasChildren: this.hasChildren(file, bc),
-        hasParent,
+        hasChildren: bcHasChildren(bc.graph, file.path),
+        hasParent: bcHasParent(bc.graph, file.path),
         excluded: isExcluded(file, this.app, this.settings),
       }, folder)) roots.push(file);
     }
@@ -1840,68 +1758,26 @@ export class NavigatorView extends ItemView {
 
   /** Returns all BC parents of `file` (outgoing `up` + incoming `down`), up to `limit`. */
   private getAllParentFiles(file: TFile, bc: BreadcrumbsPlugin, limit = 4): TFile[] {
-    const seen = new Set<string>([file.path]);
-    const parents: TFile[] = [];
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'up') continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path || seen.has(path)) continue;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) { seen.add(path); parents.push(f); if (parents.length >= limit) return parents; }
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'down') continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path || seen.has(path)) continue;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) { seen.add(path); parents.push(f); if (parents.length >= limit) return parents; }
-    }
-    return parents;
+    return getParentPaths(bc.graph, file.path)
+      .slice(0, limit)
+      .map((p) => this.app.vault.getAbstractFileByPath(p))
+      .filter((f): f is TFile => f instanceof TFile);
   }
 
   private getFirstParentFile(file: TFile, bc: BreadcrumbsPlugin): TFile | null {
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'up') continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path) continue;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) return f;
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'down') continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path) continue;
-      const f = this.app.vault.getAbstractFileByPath(path);
+    const paths = getParentPaths(bc.graph, file.path);
+    for (const p of paths) {
+      const f = this.app.vault.getAbstractFileByPath(p);
       if (f instanceof TFile) return f;
     }
     return null;
   }
 
   private getSiblingPaths(file: TFile, bc: BreadcrumbsPlugin): Set<string> {
-    const parentPaths = new Set<string>();
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'up') continue;
-      const p = e.target_path?.(bc.graph) ?? e.target;
-      if (p) parentPaths.add(p);
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'down') continue;
-      const p = e.source_path?.(bc.graph) ?? e.source;
-      if (p) parentPaths.add(p);
-    }
-
+    const parentPaths = getParentPaths(bc.graph, file.path);
     const siblings = new Set<string>();
     for (const parentPath of parentPaths) {
-      for (const e of bc.graph.get_outgoing_edges(parentPath).to_array()) {
-        if (e.edge_type?.toLowerCase() !== 'down') continue;
-        const cp = e.target_path?.(bc.graph) ?? e.target;
-        if (cp) siblings.add(cp);
-      }
-      for (const e of bc.graph.get_incoming_edges(parentPath).to_array()) {
-        if (e.edge_type?.toLowerCase() !== 'up') continue;
-        const cp = e.source_path?.(bc.graph) ?? e.source;
-        if (cp) siblings.add(cp);
-      }
+      for (const cp of getChildPaths(bc.graph, parentPath)) siblings.add(cp);
     }
     return siblings;
   }

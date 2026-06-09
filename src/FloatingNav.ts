@@ -20,6 +20,7 @@ import { App, MarkdownView, Menu, TFile, setIcon } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 import { formatDateValue, isExcluded } from './utils';
+import { getParentPaths, getChildPaths, getChainPathIds } from './bcGraph';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -153,48 +154,22 @@ export class FloatingNavPanel {
     }
 
     const seen = new Set<string>([file.path, ...chainFilePaths]);
-    const parents: TFile[] = [];
-    const children: TFile[] = [];
-
     const settings = this.getSettings();
-    const add = (path: string | undefined, arr: TFile[]) => {
-      if (!path || seen.has(path)) return;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (!(f instanceof TFile)) return;
-      if (isExcluded(f, this.app, settings)) return;
-      seen.add(path);
-      arr.push(f);
+    const toFile = (p: string): TFile | null => {
+      if (seen.has(p)) return null;
+      const f = this.app.vault.getAbstractFileByPath(p);
+      if (!(f instanceof TFile) || isExcluded(f, this.app, settings)) return null;
+      seen.add(p);
+      return f;
     };
-
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      const type = e.edge_type?.toLowerCase();
-      if (type === 'up')   add(path, parents);
-      if (type === 'down') add(path, children);
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      const type = e.edge_type?.toLowerCase();
-      if (type === 'up')   add(path, children);
-      if (type === 'down') add(path, parents);
-    }
+    const parents = getParentPaths(bc.graph, file.path).map(toFile).filter((f): f is TFile => f !== null);
+    const children = getChildPaths(bc.graph, file.path).map(toFile).filter((f): f is TFile => f !== null);
 
     return { parents, chains, children };
   }
 
   private getChainPaths(file: TFile, bc: BreadcrumbsPlugin): string[] {
-    const paths = new Set<string>();
-    const check = (t: string | undefined) => {
-      const lower = t?.toLowerCase() ?? '';
-      if (lower === 'next' || lower === 'prev') {
-        paths.add('');
-      } else if (lower.startsWith('next.') || lower.startsWith('prev.')) {
-        paths.add(lower.split('.').slice(1).join('.'));
-      }
-    };
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) check(e.edge_type);
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) check(e.edge_type);
-    return [...paths].sort();
+    return [...getChainPathIds(bc.graph, file.path)].sort();
   }
 
   private findPrevForPath(

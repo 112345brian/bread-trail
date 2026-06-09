@@ -12,7 +12,7 @@ import { Sequencer, parseLinkChildrenConfig, findAllConfiguredParents } from './
 import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
 import { getHomepageTargetForFile } from './homepageUtils';
-import type { HomepageTarget } from './homepageUtils';
+import { getParentPaths, getChildPaths } from './bcGraph';
 
 export interface BreadcrumbEdge {
   source?: string;
@@ -409,18 +409,8 @@ export default class BreadTrail extends Plugin {
   }
 
   private getFirstParentFile(file: TFile, bc: BreadcrumbsPlugin): TFile | null {
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'up') continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path) continue;
-      const found = this.app.vault.getAbstractFileByPath(path);
-      if (found instanceof TFile) return found;
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== 'down') continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path) continue;
-      const found = this.app.vault.getAbstractFileByPath(path);
+    for (const p of getParentPaths(bc.graph, file.path)) {
+      const found = this.app.vault.getAbstractFileByPath(p);
       if (found instanceof TFile) return found;
     }
     return null;
@@ -755,20 +745,11 @@ export default class BreadTrail extends Plugin {
     const seen = new Set<string>([file.path]);
     const chain: TFile[] = [];
 
-    /** Return the first `up` parent of `node` not yet seen, or null. */
+    /** Return the first parent of `node` not yet seen, or null. */
     const getParent = (node: TFile): TFile | null => {
-      for (const e of bc.graph.get_outgoing_edges(node.path).to_array()) {
-        if (e.edge_type?.toLowerCase() !== 'up') continue;
-        const path = e.target_path?.(bc.graph) ?? e.target;
-        if (!path || seen.has(path)) continue;
-        const found = this.app.vault.getAbstractFileByPath(path);
-        if (found instanceof TFile) return found;
-      }
-      for (const e of bc.graph.get_incoming_edges(node.path).to_array()) {
-        if (e.edge_type?.toLowerCase() !== 'down') continue;
-        const path = e.source_path?.(bc.graph) ?? e.source;
-        if (!path || seen.has(path)) continue;
-        const found = this.app.vault.getAbstractFileByPath(path);
+      for (const p of getParentPaths(bc.graph, node.path)) {
+        if (seen.has(p)) continue;
+        const found = this.app.vault.getAbstractFileByPath(p);
         if (found instanceof TFile) return found;
       }
       return null;
@@ -888,17 +869,7 @@ export default class BreadTrail extends Plugin {
     // For each auto parent, check if changedFile is one of its children (bidirectional)
     const bc = this.bc;
     for (const { file: parent, config } of autoParents) {
-      const isChild =
-        bc.graph.get_outgoing_edges(parent.path).to_array().some((edge) => {
-          const edgeType = edge.edge_type?.toLowerCase() ?? '';
-          if (edgeType !== 'down' && edgeType !== 'child') return false;
-          return (edge.target_path?.(bc.graph) ?? edge.target) === changedFile.path;
-        }) ||
-        bc.graph.get_incoming_edges(parent.path).to_array().some((edge) => {
-          const edgeType = edge.edge_type?.toLowerCase() ?? '';
-          if (edgeType !== 'up') return false;
-          return (edge.source_path?.(bc.graph) ?? edge.source) === changedFile.path;
-        });
+      const isChild = getChildPaths(bc.graph, parent.path, true).includes(changedFile.path);
       if (!isChild) continue;
 
       // Debounce per parent — wait 2s after last change before re-sequencing

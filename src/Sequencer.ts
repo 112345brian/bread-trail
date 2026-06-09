@@ -1,6 +1,7 @@
 import { App, TFile } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
+import { getChildPaths } from './bcGraph';
 
 // ── Config types (parsed from a parent note's frontmatter) ───────────────────
 
@@ -302,29 +303,9 @@ export class Sequencer {
 
   /** Get all direct children of a file via the BC graph (bidirectional). */
   private getChildren(parent: TFile): TFile[] {
-    const children: TFile[] = [];
-    const seen = new Set<string>();
-
-    const add = (path: string | undefined) => {
-      if (!path || seen.has(path)) return;
-      seen.add(path);
-      const file = this.app.vault.getAbstractFileByPath(path);
-      if (file instanceof TFile) children.push(file);
-    };
-
-    // Outgoing `down`/`child` edges: parent → child
-    for (const edge of this.bc.graph.get_outgoing_edges(parent.path).to_array()) {
-      const edgeType = edge.edge_type?.toLowerCase() ?? '';
-      if (edgeType !== 'down' && edgeType !== 'child') continue;
-      add(edge.target_path?.(this.bc.graph) ?? edge.target);
-    }
-    // Incoming `up` edges: child says "my parent is this note"
-    for (const edge of this.bc.graph.get_incoming_edges(parent.path).to_array()) {
-      const edgeType = edge.edge_type?.toLowerCase() ?? '';
-      if (edgeType !== 'up') continue;
-      add(edge.source_path?.(this.bc.graph) ?? edge.source);
-    }
-    return children;
+    return getChildPaths(this.bc.graph, parent.path, true)
+      .map((p) => this.app.vault.getAbstractFileByPath(p))
+      .filter((f): f is TFile => f instanceof TFile);
   }
 
   /** Compute the diff for a single key, reading both flat and nested forms. */

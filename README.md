@@ -23,13 +23,13 @@ Cards show configurable frontmatter metadata below the title. Ctrl/Cmd+click ope
 Hierarchical browser you can navigate independently of the active note:
 
 - Click a note to drill into its children
-- Back button walks up the hierarchy
-- **Toggle** the browse icon again to switch between BC hierarchy and real vault folder structure (`hard-drive` icon)
+- Back button walks up the hierarchy (multi-parent notes show the merged sibling view of all parents)
+- **⋯ more-options menu** — switch between BC hierarchy and real vault folder structure (`hard-drive` icon)
 - **Smart locate button** — shows `crosshair` when the browser isn't on the active note (click to jump there); flips to `rotate-ccw` when it already is (click to reset to configured start)
 - Per-section sort cycling: alphabetical, reverse-alpha, sequence order, custom field, modified date, created date
 
 ### Recent mode (`clock`)
-Shows recently opened notes vault-wide. Click the icon a second time to switch to **siblings-only** mode (`users` icon) — showing only notes that share a BC parent with the active note.
+Shows recently opened notes vault-wide. Use the **⋯ more-options menu** to switch to **siblings-only** mode (`users` icon) — showing only notes that share a BC parent with the active note.
 
 ### Favorites mode (`star`)
 Shows notes you've starred, combining two sources:

@@ -292,15 +292,15 @@ return null; // ambiguous or missing — don't guess
 ## Release process
 
 ```bash
-npm run build          # must be clean before committing
-node version-bump.mjs  # bumps manifest.json + versions.json
-git add manifest.json versions.json src/...
-git commit -m "Release X.Y.Z — ..."
-git push
+npm run build                      # must pass clean
+npm version patch                  # bumps package.json, runs version-bump.mjs (manifest + versions), tags commit
+git push --follow-tags             # push commit + tag → CI creates the GitHub release automatically
 ```
 
-The GitHub release (with `main.js`, `manifest.json`, `styles.css` attached) is
-created manually after pushing.
+**Rules:**
+- Always use `npm version <patch|minor|major>` — never run `node version-bump.mjs` directly (it reads `npm_package_version` which only exists when invoked via npm).
+- The GitHub release is created by the tag-triggered CI workflow. Do not create it manually — you'll get a conflict.
+- The release attaches `main.js` and `manifest.json`. `styles.css` is not present in this repo (no separate stylesheet); `fail_on_unmatched_files: false` in the workflow handles this gracefully.
 
 ---
 

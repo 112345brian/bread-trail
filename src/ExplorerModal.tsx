@@ -5,42 +5,23 @@ import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 import { shouldIncludeVaultRoot } from './homepageRoots';
 import { isExcluded } from './utils';
+import { getParentPaths, getChildPaths, hasChildren as bcHasChildren, hasParent as bcHasParent, isDirectChild } from './bcGraph';
 
 // ── BC graph helpers ───────────────────────────────────────────────────────────
 
 function getChildren(file: TFile, bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings): TFile[] {
-  const seen = new Set<string>([file.path]);
-  const children: TFile[] = [];
-  const add = (path: string | undefined) => {
-    if (!path || seen.has(path)) return;
-    const f = app.vault.getAbstractFileByPath(path);
-    if (!(f instanceof TFile)) return;
-    if (isExcluded(f, app, settings)) return;
-    seen.add(path);
-    children.push(f);
-  };
-  for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-    if (e.edge_type?.toLowerCase() === 'down') add(e.target_path?.(bc.graph) ?? e.target);
-  }
-  for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-    if (e.edge_type?.toLowerCase() === 'up') add(e.source_path?.(bc.graph) ?? e.source);
-  }
-  return children.sort((a, b) => a.basename.localeCompare(b.basename));
+  return getChildPaths(bc.graph, file.path)
+    .map((p) => app.vault.getAbstractFileByPath(p))
+    .filter((f): f is TFile => f instanceof TFile && !isExcluded(f, app, settings))
+    .sort((a, b) => a.basename.localeCompare(b.basename));
 }
 
 function hasChildren(file: TFile, bc: BreadcrumbsPlugin): boolean {
-  for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-    if (e.edge_type?.toLowerCase() === 'down') return true;
-  }
-  for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-    if (e.edge_type?.toLowerCase() === 'up') return true;
-  }
-  return false;
+  return bcHasChildren(bc.graph, file.path);
 }
 
 function hasParent(file: TFile, bc: BreadcrumbsPlugin): boolean {
-  return bc.graph.get_outgoing_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'up') ||
-    bc.graph.get_incoming_edges(file.path).to_array().some((e) => e.edge_type?.toLowerCase() === 'down');
+  return bcHasParent(bc.graph, file.path);
 }
 
 function getVaultRoots(bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings, rootFolder = ''): TFile[] {
@@ -71,17 +52,7 @@ function isFavorite(
     : undefined;
   if (typeof btFm === 'object' && btFm !== null && (btFm as Record<string, unknown>)['favorite'] === true) return true;
   if (!parentNotePath) return false;
-  for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-    if (e.edge_type?.toLowerCase() !== 'up') continue;
-    const p = e.target_path?.(bc.graph) ?? e.target;
-    if (p === parentNotePath) return true;
-  }
-  for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-    if (e.edge_type?.toLowerCase() !== 'down') continue;
-    const p = e.source_path?.(bc.graph) ?? e.source;
-    if (p === parentNotePath) return true;
-  }
-  return false;
+  return isDirectChild(bc.graph, file.path, parentNotePath);
 }
 
 function getFavorites(
@@ -317,11 +288,8 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
 
     // 'active-parent' (default): start at the parent of the active note
     if (activeFile) {
-      for (const e of bc.graph.get_outgoing_edges(activeFile.path).to_array()) {
-        if (e.edge_type?.toLowerCase() !== 'up') continue;
-        const path = e.target_path?.(bc.graph) ?? e.target;
-        if (!path) continue;
-        const f = app.vault.getAbstractFileByPath(path);
+      for (const p of getParentPaths(bc.graph, activeFile.path)) {
+        const f = app.vault.getAbstractFileByPath(p);
         if (f instanceof TFile) return [f];
       }
     }
