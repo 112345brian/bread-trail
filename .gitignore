@@ -25,3 +25,6 @@ data.json
 dist/
 *.tsbuildinfo
 .test-tmp/
+
+# Local dev config (vault path, etc.) — copy dev-config.json.example to get started
+dev-config.json

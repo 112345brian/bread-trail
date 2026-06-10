@@ -13,6 +13,7 @@ import { shouldIncludeVaultRoot } from './homepageRoots';
 import { getHomepageTargetForFile } from './homepageUtils';
 import type { HomepageTarget } from './homepageUtils';
 import { getParentPaths, getChildPaths, hasParent as bcHasParent, hasChildren as bcHasChildren, isDirectChild, getChainPathIds } from './bcGraph';
+import { computeBcBrowserInit } from './navigator/browserInit';
 
 export const NAVIGATOR_VIEW_TYPE = 'bread-trail-navigator';
 
@@ -1340,31 +1341,31 @@ export class NavigatorView extends ItemView {
    * persisted and must always reset to 'bc' on cold start.
    */
   private initBrowserStackBcOnly(activeFile: TFile | null, bc: BreadcrumbsPlugin | null) {
-    this.browserRootFolder = null;
-    const homePath = this.settings.homeNote;
-    if (homePath) {
-      const resolved = this.app.vault.getAbstractFileByPath(homePath) ?? null;
-      if (resolved instanceof TFile) {
-        this.browserStack = [resolved];
-        return;
-      }
-      if (resolved instanceof TFolder) {
-        // Folder home: BC browser scoped to this folder (shows parentless notes within it)
-        this.browserRootFolder = resolved.path === '/' || resolved.path === '' ? null : resolved.path;
-        this.browserStack = [];
-        return;
-      }
-      // Basename fallback — only if unambiguous
-      const byName = this.app.vault.getMarkdownFiles().filter((x) => x.basename === homePath);
-      if (byName.length === 1) { this.browserStack = [byName[0]!]; return; }
-    }
-    if (this.settings.navigatorBrowseStart === 'roots') {
-      this.browserStack = [];
-      return;
-    }
-    if (activeFile && bc) {
-      this.browserStack = [this.getBrowserContainerForActiveFile(activeFile, bc)];
-    }
+    const state = computeBcBrowserInit({
+      homeNote: this.settings.homeNote,
+      browseStart: this.settings.navigatorBrowseStart,
+      resolveByPath: (p) => {
+        const f = this.app.vault.getAbstractFileByPath(p);
+        if (f instanceof TFile) return { kind: 'file', path: f.path };
+        if (f instanceof TFolder) return { kind: 'folder', path: f.path };
+        return null;
+      },
+      resolveByBasename: (basename) => {
+        const matches = this.app.vault.getMarkdownFiles().filter((x) => x.basename === basename);
+        return matches.length === 1 ? (matches[0]!.path) : null;
+      },
+      getParentPath: (p) => {
+        if (!bc) return null;
+        const parents = getParentPaths(bc.graph, p);
+        return parents.length > 0 ? (parents[0]!) : null;
+      },
+      // Pass null when bc unavailable — falls through to empty-stack fallback
+      activePath: (activeFile && bc) ? activeFile.path : null,
+    });
+    this.browserRootFolder = state.browserRootFolder;
+    this.browserStack = state.browserStack
+      .map((p) => this.app.vault.getAbstractFileByPath(p))
+      .filter((f): f is TFile => f instanceof TFile);
   }
 
   private initBrowserStack(

@@ -9,8 +9,9 @@ import { Validator } from './Validator';
 import { ValidationModal } from './ValidationModal';
 import { SequenceModal, SequenceAllModal, RemoveStaleModal } from './SequenceModal';
 import { Sequencer, parseLinkChildrenConfig, findAllConfiguredParents } from './Sequencer';
-import { addSettingTab, DEFAULT_SETTINGS, normalizeSettings } from './settings';
+import { DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
+import { addSettingTab } from './SettingsTab';
 import { getHomepageTargetForFile } from './homepageUtils';
 import { getParentPaths, getChildPaths } from './bcGraph';
 
