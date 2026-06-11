@@ -97,6 +97,8 @@ export interface BreadTrailSettings {
   floatingNavRight: boolean;
   /** On mobile: which sidebar the navigator auto-opens into on startup. */
   mobileNavigatorSide: 'left' | 'right';
+  /** On mobile: auto-open the navigator sidebar when the app starts. */
+  mobileAutoOpenSidebar: boolean;
   /** On mobile: pinch-out (two-finger spread) anywhere to open the tile explorer. */
   mobileTapExplorer: boolean;
   /** What the pinch-in (contract) gesture does. */
@@ -201,6 +203,7 @@ export const DEFAULT_SETTINGS: BreadTrailSettings = {
   floatingNavLeft: false,
   floatingNavRight: false,
   mobileNavigatorSide: 'left',
+  mobileAutoOpenSidebar: true,
   mobileTapExplorer: true,
   explorerGesturePinch: 'parent',
   explorerGestureExpand: 'children',
@@ -327,6 +330,7 @@ export function normalizeSettings(settings: Partial<BreadTrailSettings>): BreadT
     floatingNavLeft: typeof settings.floatingNavLeft === 'boolean' ? settings.floatingNavLeft : false,
     floatingNavRight: typeof settings.floatingNavRight === 'boolean' ? settings.floatingNavRight : false,
     mobileNavigatorSide: settings.mobileNavigatorSide === 'right' ? 'right' : 'left',
+    mobileAutoOpenSidebar: typeof settings.mobileAutoOpenSidebar === 'boolean' ? settings.mobileAutoOpenSidebar : true,
     mobileTapExplorer: typeof settings.mobileTapExplorer === 'boolean' ? settings.mobileTapExplorer : true,
     explorerGesturePinch: (['off', 'parent', 'children', 'home'] as ExplorerGestureAction[]).includes(settings.explorerGesturePinch as ExplorerGestureAction) ? settings.explorerGesturePinch as ExplorerGestureAction : 'parent',
     explorerGestureExpand: (['off', 'parent', 'children', 'home'] as ExplorerGestureAction[]).includes(settings.explorerGestureExpand as ExplorerGestureAction) ? settings.explorerGestureExpand as ExplorerGestureAction : 'children',

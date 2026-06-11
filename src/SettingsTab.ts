@@ -306,6 +306,14 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
     if (Platform.isMobile) {
       new Setting(el)
+        .setName('Open navigator on startup')
+        .setDesc('Automatically open the navigator sidebar when the app launches.')
+        .addToggle((t) => {
+          t.setValue(this.plugin.settings.mobileAutoOpenSidebar);
+          t.onChange(async (v) => { this.plugin.settings.mobileAutoOpenSidebar = v; await this.save(); });
+        });
+
+      new Setting(el)
         .setName('Navigator sidebar side')
         .setDesc('Which side the navigator opens into on startup.')
         .addDropdown((d) => {

@@ -139,9 +139,7 @@ export default class BreadTrail extends Plugin {
     // Bread Trail, so this path retries before showing the missing-plugin modal.
     this.app.workspace.onLayoutReady(async () => {
       this.checkBreadcrumbsOnStartup();
-      // On mobile: auto-open the navigator so the user never has to manually
-      // trigger it after the app starts. Side is user-configurable (default left).
-      if (Platform.isMobile) {
+      if (Platform.isMobile && this.settings.mobileAutoOpenSidebar) {
         await this.openNavigatorInSidebar(this.settings.mobileNavigatorSide);
       }
     });
@@ -601,6 +599,12 @@ export default class BreadTrail extends Plugin {
 
   /** Returns true when the bread-trail navigator is visible in the given sidebar. */
   private isSidebarShowingNav(side: 'left' | 'right'): boolean {
+    // On mobile, sidebars are full-screen overlays — you can never see both the note
+    // and the sidebar at once, so if the navigator leaf exists anywhere, suppress
+    // floating panels (they'd be invisible while the sidebar is up anyway).
+    if (Platform.isMobile) {
+      return this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE).length > 0;
+    }
     const split = side === 'left'
       ? this.app.workspace.leftSplit
       : this.app.workspace.rightSplit;
