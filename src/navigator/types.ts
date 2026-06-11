@@ -1,6 +1,18 @@
 import type { TFile } from 'obsidian';
 
 export type NavMode = 'context' | 'browser' | 'recent' | 'favorites';
+
+export interface SortState {
+  mode: SortMode;
+  cycle: SortMode[];
+}
+
+export interface NavNote {
+  file: TFile;
+  relation: NavRelation;
+  seqPos?: number;
+  seqTotal?: number;
+}
 export type NavRelation = 'parent' | 'previous' | 'current' | 'next' | 'child';
 export type SortMode = 'sequence' | 'alpha' | 'alpha-desc' | 'field' | 'mtime' | 'ctime';
 export type BrowserViewMode = 'bc' | 'files';
