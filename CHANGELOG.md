@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.30] — 2026-06-14
+
+- **Fix:** File system view toggle now works correctly — clicking "File system view" in the ⋯ menu reliably switches to the vault folder browser.
+- **Fix:** Follow mode no longer overrides file system view when the active file changes; it now skips its BC-hierarchy override entirely while you're browsing folders.
+- **Fix:** Switching back from file system view to BC hierarchy via the ⋯ menu no longer shows a stale follow-mode merged-children view from a previous navigation.
+
 ## [1.2.29] — 2026-06-13
 
 - **Settings API (Obsidian 1.13+):** Convert `SettingsTab` to declarative `getSettingDefinitions()` — enables settings search and the new settings panel UI. Legacy `display()` kept as fallback for < 1.13.

@@ -172,7 +172,13 @@ export class NavigatorView extends ItemView {
       );
     }
 
-    const data = await this.computeNavData();
+    let data: NavData;
+    try {
+      data = await this.computeNavData();
+    } catch (err) {
+      console.error('[bread-trail] refresh failed:', err);
+      return;
+    }
     this.navDataCache = data;
 
     render(
@@ -207,6 +213,13 @@ export class NavigatorView extends ItemView {
       .filter((f): f is TFile => f instanceof TFile);
 
     if (parents.length > 0) {
+      // File-system view is a user-chosen sub-mode that shows vault folders,
+      // not the BC hierarchy — follow mode doesn't apply there. Skip the
+      // override entirely and just refresh so the toolbar stays current.
+      if (this.mode === 'browser' && this.browserViewMode === 'files') {
+        this.scheduleRefresh();
+        return;
+      }
       this.followTargets = parents;
       this.browserViewMode = 'bc';
       if (this.mode !== 'browser') this.applyMode('browser');
@@ -244,12 +257,12 @@ export class NavigatorView extends ItemView {
       raw = await this.dataBuilder.computeRecentData(activeFile, bc);
     } else if (this.mode === 'favorites') {
       raw = await this.dataBuilder.computePinboardData(activeFile);
+    } else if (this.mode === 'browser' && this.browserViewMode === 'files') {
+      raw = await this.dataBuilder.computeFileBrowserData(activeFile);
     } else if (!bc) {
       raw = { sections: [], emptyMessage: 'Breadcrumbs plugin not detected.' };
     } else if (this.mode === 'browser') {
-      raw = this.browserViewMode === 'files'
-        ? await this.dataBuilder.computeFileBrowserData(activeFile)
-        : await this.dataBuilder.computeBrowserData(bc, activeFile, this.getBrowserSortCycle());
+      raw = await this.dataBuilder.computeBrowserData(bc, activeFile, this.getBrowserSortCycle());
     } else {
       raw = await this.dataBuilder.computeContextData(bc, activeFile);
     }
@@ -378,12 +391,14 @@ export class NavigatorView extends ItemView {
 
       setMode: (mode) => {
         if (mode === 'browser' && this.mode === 'browser') {
-          // Pressing browse while already in browser: always return to BC view at
-          // the active note. File-system mode is toggled via the more-options menu.
-          const bc = this.getBc();
-          const activeFile = this.app.workspace.getActiveFile();
-          this.browserViewMode = 'bc';
-          this.initBrowserStack(activeFile, bc);
+          // Pressing browse while already in browser toggles between file-system
+          // and BC hierarchy views. The crosshair/goToActive button handles reset.
+          this.browserViewMode = this.browserViewMode === 'bc' ? 'files' : 'bc';
+          if (this.browserViewMode === 'files') {
+            this.folderStack = [];
+          } else {
+            this.followTargets = [];
+          }
           void this.refresh();
         } else if (mode === 'recent' && this.mode === 'recent') {
           // Pressing Recent while already in recent: return to global view.
@@ -406,7 +421,13 @@ export class NavigatorView extends ItemView {
       toggleFileBrowser: () => {
         if (this.mode !== 'browser') return;
         this.browserViewMode = this.browserViewMode === 'bc' ? 'files' : 'bc';
-        if (this.browserViewMode === 'files') this.folderStack = [];
+        if (this.browserViewMode === 'files') {
+          this.folderStack = [];
+        } else {
+          // Returning to BC view — discard any follow targets that accumulated
+          // while the user was browsing the file system.
+          this.followTargets = [];
+        }
         void this.refresh();
       },
 
