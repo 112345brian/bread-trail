@@ -1,6 +1,7 @@
 import { App, FuzzySuggestModal, TFile, setIcon, FuzzyMatch } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
+import { getEdgeDirections, type EdgeDirections } from './bcGraph';
 
 interface BCItem {
   file: TFile;
@@ -18,6 +19,7 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
   private bc: BreadcrumbsPlugin;
   private rootFile: TFile;
   private items: BCItem[] = [];
+  private dirs: EdgeDirections;
 
   constructor(
     app: App,
@@ -29,6 +31,7 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
     super(app);
     this.rootFile = file;
     this.bc = bc;
+    this.dirs = getEdgeDirections(bc);
     this.setPlaceholder(includeVaultFiles ? 'Search notes with breadcrumb context...' : 'Search previous, next, parents, children, and related notes...');
     this.setInstructions([
       { command: 'Cmd ↑', purpose: 'open nearest parent' },
@@ -160,11 +163,11 @@ export class BreadcrumbQuickSwitcher extends FuzzySuggestModal<BCItem> {
   }
 
   private getRelation(edgeType: string | undefined, direction: Direction): Relation {
-    const type = edgeType?.toLowerCase();
-    if (type === 'up') return direction === 'outgoing' ? 'parent' : 'child';
-    if (type === 'down') return direction === 'outgoing' ? 'child' : 'parent';
-    if (type === 'next') return direction === 'outgoing' ? 'next' : 'previous';
-    if (type === 'prev') return direction === 'outgoing' ? 'previous' : 'next';
+    const type = edgeType?.toLowerCase() ?? '';
+    if (this.dirs.ups.has(type)) return direction === 'outgoing' ? 'parent' : 'child';
+    if (this.dirs.downs.has(type)) return direction === 'outgoing' ? 'child' : 'parent';
+    if (this.dirs.nexts.has(type)) return direction === 'outgoing' ? 'next' : 'previous';
+    if (this.dirs.prevs.has(type)) return direction === 'outgoing' ? 'previous' : 'next';
     return 'related';
   }
 

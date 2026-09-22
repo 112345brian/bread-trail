@@ -1,4 +1,4 @@
-import { App, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Modal, Notice, Platform, Plugin, TFile, setIcon } from 'obsidian';
+import { App, EventRef, MarkdownPostProcessorContext, MarkdownRenderChild, MarkdownView, Modal, Notice, Platform, Plugin, TFile, setIcon } from 'obsidian';
 import { OutlineModal } from './OutlineModal';
 import { ExplorerModal } from './ExplorerModal';
 import { BreadcrumbQuickSwitcher } from './QuickSwitcher';
@@ -13,7 +13,7 @@ import { DEFAULT_SETTINGS, normalizeSettings } from './settings';
 import type { BreadTrailSettings } from './settings';
 import { addSettingTab } from './SettingsTab';
 import { getHomepageTargetForFile } from './homepageUtils';
-import { getParentPaths, getChildPaths } from './bcGraph';
+import { getParentPaths, getChildPaths, getEdgeDirections } from './bcGraph';
 
 export interface BreadcrumbEdge {
   source?: string;
@@ -31,11 +31,23 @@ export interface BreadcrumbsGraph {
 export interface BreadcrumbsPlugin {
   graph: BreadcrumbsGraph;
   settings: {
-    edge_fields: string[];
+    edge_fields: { label: string }[];
+    edge_field_groups: { label: string; fields: string[] }[];
   };
   events: {
-    on(event: string, cb: () => void): void;
+    on(event: string, cb: () => void): EventRef;
+    offref(ref: EventRef): void;
   };
+}
+
+type NavigatorSide = 'left' | 'right';
+
+interface BreadTrailReloadState {
+  __breadTrailNavigatorSides?: NavigatorSide[];
+}
+
+function getReloadState(): BreadTrailReloadState {
+  return activeWindow as Window & BreadTrailReloadState;
 }
 
 interface AppWithPlugins extends App {
@@ -139,6 +151,10 @@ export default class BreadTrail extends Plugin {
     // Bread Trail, so this path retries before showing the missing-plugin modal.
     this.app.workspace.onLayoutReady(async () => {
       this.checkBreadcrumbsOnStartup();
+      const reloadState = getReloadState();
+      const navigatorSides = reloadState.__breadTrailNavigatorSides ?? [];
+      delete reloadState.__breadTrailNavigatorSides;
+      for (const side of navigatorSides) await this.openNavigatorInSidebar(side);
       if (Platform.isMobile && this.settings.mobileAutoOpenSidebar) {
         await this.openNavigatorInSidebar(this.settings.mobileNavigatorSide);
       }
@@ -408,7 +424,7 @@ export default class BreadTrail extends Plugin {
   }
 
   private getFirstParentFile(file: TFile, bc: BreadcrumbsPlugin): TFile | null {
-    for (const p of getParentPaths(bc.graph, file.path)) {
+    for (const p of getParentPaths(bc.graph, file.path, getEdgeDirections(bc))) {
       const found = this.app.vault.getAbstractFileByPath(p);
       if (found instanceof TFile) return found;
     }
@@ -505,6 +521,16 @@ export default class BreadTrail extends Plugin {
   }
 
   onunload() {
+    // Workspace leaves can outlive a plugin reload. Detach ours so Obsidian
+    // recreates NavigatorView from the newly loaded bundle instead of keeping
+    // an incompatible, blank instance from an older build.
+    const reloadState = getReloadState();
+    reloadState.__breadTrailNavigatorSides = this.app.workspace
+      .getLeavesOfType(NAVIGATOR_VIEW_TYPE)
+      .map((leaf) => leaf.getRoot() === this.app.workspace.leftSplit ? 'left' : 'right');
+    for (const leaf of this.app.workspace.getLeavesOfType(NAVIGATOR_VIEW_TYPE)) {
+      leaf.detach();
+    }
     for (const panels of this.floatingPanels.values()) {
       panels.left?.detach();
       panels.right?.detach();
@@ -548,6 +574,15 @@ export default class BreadTrail extends Plugin {
     this.syncFloatingNavPanels();
     this.refreshFloatingNavPanels();
     this.updateAllHeaderBreadcrumbs();
+  }
+
+  /**
+   * Exposes the currently available Breadcrumbs integration to the settings
+   * screen. Keeping discovery here means the settings UI and the navigator use
+   * the same guarded compatibility boundary.
+   */
+  getBreadcrumbsForSettings(): BreadcrumbsPlugin | null {
+    return this.ensureBreadcrumbs();
   }
 
   private ensureBreadcrumbs(): BreadcrumbsPlugin | null {
@@ -749,10 +784,11 @@ export default class BreadTrail extends Plugin {
   private getBcAncestorChain(file: TFile, bc: BreadcrumbsPlugin): TFile[] {
     const seen = new Set<string>([file.path]);
     const chain: TFile[] = [];
+    const dirs = getEdgeDirections(bc);
 
     /** Return the first parent of `node` not yet seen, or null. */
     const getParent = (node: TFile): TFile | null => {
-      for (const p of getParentPaths(bc.graph, node.path)) {
+      for (const p of getParentPaths(bc.graph, node.path, dirs)) {
         if (seen.has(p)) continue;
         const found = this.app.vault.getAbstractFileByPath(p);
         if (found instanceof TFile) return found;
@@ -873,8 +909,9 @@ export default class BreadTrail extends Plugin {
 
     // For each auto parent, check if changedFile is one of its children (bidirectional)
     const bc = this.bc;
+    const dirs = getEdgeDirections(bc);
     for (const { file: parent, config } of autoParents) {
-      const isChild = getChildPaths(bc.graph, parent.path, true).includes(changedFile.path);
+      const isChild = getChildPaths(bc.graph, parent.path, dirs, true).includes(changedFile.path);
       if (!isChild) continue;
 
       // Debounce per parent — wait 2s after last change before re-sequencing

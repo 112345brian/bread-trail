@@ -1,4 +1,4 @@
-import { App, Modal, TFile, setIcon } from 'obsidian';
+import { App, EventRef, Modal, TFile, setIcon } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 
 interface TreeNode {
@@ -12,6 +12,7 @@ export class OutlineModal extends Modal {
   private rootFile: TFile;
   private contentContainer!: HTMLElement;
   private graphUpdateHandler: () => void;
+  private graphUpdateRef: EventRef | null = null;
   private maxDepth = 50; // Prevent runaway recursion
 
   constructor(app: App, file: TFile, bc: BreadcrumbsPlugin) {
@@ -34,16 +35,14 @@ export class OutlineModal extends Modal {
     this.refresh();
 
     // Subscribe to BC graph updates for live refresh
-    this.bc.events.on('graph-update', this.graphUpdateHandler);
+    this.graphUpdateRef = this.bc.events.on('graph-update', this.graphUpdateHandler);
   }
 
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
-    // Note: BC plugin doesn't expose an unsubscribe API for events.
-    // The handler is a bound arrow function, so it won't prevent GC of the modal,
-    // but it will continue to fire refresh() on a closed modal until BC reloads.
-    // This is a known limitation of the BC plugin API.
+    if (this.graphUpdateRef) this.bc.events.offref(this.graphUpdateRef);
+    this.graphUpdateRef = null;
   }
 
   private refresh() {

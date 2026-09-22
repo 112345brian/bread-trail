@@ -5,32 +5,34 @@ import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 import { shouldIncludeVaultRoot } from './homepageRoots';
 import { isExcluded } from './utils';
-import { getParentPaths, getChildPaths, hasChildren as bcHasChildren, hasParent as bcHasParent, isDirectChild } from './bcGraph';
+import { getParentPaths, getChildPaths, hasChildren as bcHasChildren, hasParent as bcHasParent, isDirectChild, getEdgeDirections, type EdgeDirections } from './bcGraph';
 
 // ── BC graph helpers ───────────────────────────────────────────────────────────
+// `dirs` is computed once per render (see ExplorerGrid) and threaded through
+// instead of each of these rebuilding it from bc.settings per file.
 
-function getChildren(file: TFile, bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings): TFile[] {
-  return getChildPaths(bc.graph, file.path)
+function getChildren(file: TFile, bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings, dirs: EdgeDirections): TFile[] {
+  return getChildPaths(bc.graph, file.path, dirs)
     .map((p) => app.vault.getAbstractFileByPath(p))
     .filter((f): f is TFile => f instanceof TFile && !isExcluded(f, app, settings))
     .sort((a, b) => a.basename.localeCompare(b.basename));
 }
 
-function hasChildren(file: TFile, bc: BreadcrumbsPlugin): boolean {
-  return bcHasChildren(bc.graph, file.path);
+function hasChildren(file: TFile, bc: BreadcrumbsPlugin, dirs: EdgeDirections): boolean {
+  return bcHasChildren(bc.graph, file.path, dirs);
 }
 
-function hasParent(file: TFile, bc: BreadcrumbsPlugin): boolean {
-  return bcHasParent(bc.graph, file.path);
+function hasParent(file: TFile, bc: BreadcrumbsPlugin, dirs: EdgeDirections): boolean {
+  return bcHasParent(bc.graph, file.path, dirs);
 }
 
-function getVaultRoots(bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings, rootFolder = ''): TFile[] {
+function getVaultRoots(bc: BreadcrumbsPlugin, app: App, settings: BreadTrailSettings, dirs: EdgeDirections, rootFolder = ''): TFile[] {
   const roots: TFile[] = [];
   for (const file of app.vault.getMarkdownFiles()) {
     if (shouldIncludeVaultRoot({
       path: file.path,
-      hasChildren: hasChildren(file, bc),
-      hasParent: hasParent(file, bc),
+      hasChildren: hasChildren(file, bc, dirs),
+      hasParent: hasParent(file, bc, dirs),
       excluded: isExcluded(file, app, settings),
     }, rootFolder)) roots.push(file);
   }
@@ -44,6 +46,7 @@ function isFavorite(
   bc: BreadcrumbsPlugin,
   pinnedPaths: Set<string>,
   parentNotePath: string,
+  dirs: EdgeDirections,
 ): boolean {
   if (pinnedPaths.has(file.path)) return true;
   const fm = app.metadataCache.getFileCache(file)?.frontmatter as unknown;
@@ -52,16 +55,16 @@ function isFavorite(
     : undefined;
   if (typeof btFm === 'object' && btFm !== null && (btFm as Record<string, unknown>)['favorite'] === true) return true;
   if (!parentNotePath) return false;
-  return isDirectChild(bc.graph, file.path, parentNotePath);
+  return isDirectChild(bc.graph, file.path, parentNotePath, dirs);
 }
 
 function getFavorites(
   app: App, bc: BreadcrumbsPlugin, pinnedPaths: string[], parentNotePath: string,
-  settings: BreadTrailSettings,
+  settings: BreadTrailSettings, dirs: EdgeDirections,
 ): TFile[] {
   const pinned = new Set(pinnedPaths);
   return app.vault.getMarkdownFiles()
-    .filter((f) => !isExcluded(f, app, settings) && isFavorite(f, app, bc, pinned, parentNotePath))
+    .filter((f) => !isExcluded(f, app, settings) && isFavorite(f, app, bc, pinned, parentNotePath, dirs))
     .sort((a, b) => {
       const ai = pinnedPaths.indexOf(a.path);
       const bi = pinnedPaths.indexOf(b.path);
@@ -271,6 +274,8 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
     menu.showAtMouseEvent(e);
   }, [localTileWidth, sortMode]);
 
+  const dirs = getEdgeDirections(bc);
+
   const [stack, setStack] = useState<TFile[]>(() => {
     // Gesture override: a specific file was requested directly
     if (startFile !== undefined) return startFile ? [startFile] : [];
@@ -288,7 +293,7 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
 
     // 'active-parent' (default): start at the parent of the active note
     if (activeFile) {
-      for (const p of getParentPaths(bc.graph, activeFile.path)) {
+      for (const p of getParentPaths(bc.graph, activeFile.path, dirs)) {
         const f = app.vault.getAbstractFileByPath(p);
         if (f instanceof TFile) return [f];
       }
@@ -297,7 +302,7 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
   });
 
   const current = stack[stack.length - 1] ?? null;
-  const rawItems: TFile[] = current ? getChildren(current, bc, app, settings) : getVaultRoots(bc, app, settings, rootFolder);
+  const rawItems: TFile[] = current ? getChildren(current, bc, app, settings, dirs) : getVaultRoots(bc, app, settings, dirs, rootFolder);
   const items = [...rawItems].sort((a, b) => {
     switch (sortMode) {
       case 'alpha-desc':    return b.basename.localeCompare(a.basename);
@@ -382,7 +387,7 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
           style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${localTileWidth}px, 1fr))` }}
         >
           {items.map((file) => {
-            const isFolder = hasChildren(file, bc);
+            const isFolder = hasChildren(file, bc, dirs);
             return (
               <Tile
                 key={file.path}
@@ -402,7 +407,7 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
       {/* Home-level extras: Favorites + Recents (only when at the top level) */}
       {/* Home-level extras: Favorites + Recents */}
       {current === null && (() => {
-        const favFiles = showFavorites ? getFavorites(app, bc, favoritePaths, favoritesParentNote, settings) : [];
+        const favFiles = showFavorites ? getFavorites(app, bc, favoritePaths, favoritesParentNote, settings, dirs) : [];
         const recentFiles = showRecents ? getRecents(app, recentsCount, settings) : [];
         if (favFiles.length === 0 && recentFiles.length === 0) return null;
         const favMetaProps = settings.navigatorFavoritesMetaProperties;
@@ -431,7 +436,7 @@ function ExplorerGrid({ app, bc, settings, activeFile, tileMinWidth, startMode, 
                   style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${localTileWidth}px, 1fr))` }}
                 >
                   {favFiles.map((file) => {
-                    const isFolder = hasChildren(file, bc);
+                    const isFolder = hasChildren(file, bc, dirs);
                     return (
                       <Tile
                         key={file.path}

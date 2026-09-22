@@ -1,8 +1,10 @@
-import { App, Platform, PluginSettingTab, Setting, setIcon } from 'obsidian';
+import { App, Platform, PluginSettingTab, Setting, setIcon, TFile } from 'obsidian';
 import type { SettingDefinitionItem } from 'obsidian';
 import type BreadTrail from './main';
+import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings, PinboardSectionType, ValidationSeverity } from './settings';
 import { DEFAULT_SETTINGS } from './settings';
+import { getEdgeDirections, getParentPaths } from './bcGraph';
 
 const SEVERITY_OPTIONS: Record<string, string> = {
   'error':   'Error',
@@ -16,6 +18,11 @@ const GESTURE_OPTIONS: Record<string, string> = {
   'children': "Open children — show what's inside the active note",
   'home':     'Open home — go to the configured home note',
 };
+
+interface SettingsApp extends App {
+  setting: { openTabById(id: string): void; refreshCurrentPage(): void };
+  commands: { executeCommandById(id: string): unknown };
+}
 
 class BreadTrailSettingTab extends PluginSettingTab {
   private advancedMode = false;
@@ -129,9 +136,29 @@ class BreadTrailSettingTab extends PluginSettingTab {
 
   override getSettingDefinitions(): SettingDefinitionItem[] {
     return [
-      // ── General ────────────────────────────────────────────────────────────
+      // ── Start here ─────────────────────────────────────────────────────────
       {
-        type: 'page', name: 'General',
+        type: 'page', name: 'Start here',
+        items: [
+          {
+            name: 'Breadcrumbs connection',
+            searchable: false,
+            render: (setting) => this.renderBreadcrumbsStatus(setting),
+          },
+          { type: 'group', heading: 'What BreadTrail controls', items: [
+            { name: 'Sidebar navigator',
+              desc: 'Browse the parent, children, siblings, recent notes, and favorites defined by your Breadcrumbs relationships.' },
+            { name: 'Graph switcher and tile explorer',
+              desc: 'Explore the same relationships visually. Their display options live in Graph switcher and Sidebar & browsing.' },
+            { name: 'Tip',
+              desc: 'Define relationship fields and direction groups in Breadcrumbs first. BreadTrail reads that graph; it does not create a second hierarchy.' },
+          ]},
+        ],
+      },
+
+      // ── Quick switcher ─────────────────────────────────────────────────────
+      {
+        type: 'page', name: 'Quick switcher',
         items: [
           { type: 'group', heading: 'Quick switcher', items: [
             { name: 'Parent depth', desc: 'Maximum parent levels to traverse. Set to 0 to disable.',
@@ -142,9 +169,9 @@ class BreadTrailSettingTab extends PluginSettingTab {
         ],
       },
 
-      // ── Graph ──────────────────────────────────────────────────────────────
+      // ── Graph switcher ─────────────────────────────────────────────────────
       {
-        type: 'page', name: 'Graph',
+        type: 'page', name: 'Graph switcher',
         items: [
           { type: 'group', heading: 'Labels & metadata', items: [
             { name: 'Node metadata property',
@@ -182,14 +209,14 @@ class BreadTrailSettingTab extends PluginSettingTab {
         ],
       },
 
-      // ── Navigator ──────────────────────────────────────────────────────────
+      // ── Sidebar ────────────────────────────────────────────────────────────
       {
-        type: 'page', name: 'Navigator',
+        type: 'page', name: 'Sidebar & browsing',
         items: [
-          // Advanced mode toggle — imperative so we can call refreshDomState()
+          // This is session-only to avoid storing a presentation preference in vault data.
           {
-            name: 'Advanced settings',
-            desc: 'Show granular options for power users.',
+            name: 'Show advanced controls',
+            desc: 'Show sorting, preview, toolbar, recent-note, and exclusion options for this settings session.',
             render: (setting) => {
               setting.addToggle((t) => {
                 t.setValue(this.advancedMode);
@@ -197,17 +224,33 @@ class BreadTrailSettingTab extends PluginSettingTab {
               });
             },
           },
-          { type: 'group', heading: 'Home', items: [
-            { name: 'Home',
-              desc: 'Default folder or index note for the sidebar browser. Use homepage note and homepage target to override what appears while viewing your homepage.',
+          {
+            name: 'How browsing starts',
+            searchable: false,
+            render: (setting, group) => {
+              setting.setHeading();
+              group.listEl.createEl('p', {
+                text: 'Normally the sidebar starts at browser starting point. When the active note is dashboard note, it starts at dashboard destination instead.',
+                cls: 'setting-item-description',
+              });
+            },
+          },
+          { type: 'group', heading: 'Starting point', items: [
+            { name: 'Browser starting point',
+              desc: 'Default folder or index note for the sidebar browser and tile explorer. Use an exact vault path; leave blank to start from the active note or vault roots.',
               control: { type: 'text', key: 'homeNote', placeholder: 'TOC/index.md' } },
-            { name: 'Homepage note',
-              desc: 'Dashboard note that should browse from the homepage target instead of from its own breadcrumb parent. Leave blank to auto-detect cssclasses: homepage.',
+            { name: 'Dashboard note',
+              desc: 'Optional note that uses Dashboard destination instead of its own breadcrumb parent. Leave blank to auto-detect cssclasses: homepage.',
               control: { type: 'text', key: 'homepageNote', placeholder: 'TOC/Home.md' } },
-            { name: 'Homepage target',
-              desc: 'Folder or note to show when the active note is the homepage. Folders show parentless roots inside them; notes show their children.',
+            { name: 'Dashboard destination',
+              desc: 'Folder or note to show while viewing Dashboard note. Folders show parentless roots inside them; notes show their children.',
               control: { type: 'text', key: 'homepageTarget', placeholder: 'ARCHIVE or TOC/index.md' } },
           ]},
+          {
+            name: 'Configured paths',
+            searchable: false,
+            render: (setting) => this.renderPathStatus(setting),
+          },
           { type: 'group', heading: 'Cards', items: [
             { name: 'Metadata properties',
               desc: 'Frontmatter keys to display below each card title, one per line. Iso date values are formatted automatically (e.g. 2026-01-05 → jan 5, 2026).',
@@ -260,8 +303,8 @@ class BreadTrailSettingTab extends PluginSettingTab {
               this.renderFloatingNavigatorSection(group.listEl);
             },
           },
-          { name: 'Header breadcrumbs',
-            desc: 'Replace the file-path breadcrumb in note headers with clickable bc ancestor links.',
+          { name: 'Breadcrumb trail in note headers',
+            desc: 'Replace the file-path breadcrumb in note headers with clickable Breadcrumbs ancestor links.',
             control: { type: 'toggle', key: 'headerBreadcrumbs' } },
           { name: 'Breadcrumb depth',
             desc: 'How many ancestor levels to show. 0 = all.',
@@ -269,31 +312,31 @@ class BreadTrailSettingTab extends PluginSettingTab {
             control: { type: 'slider', key: 'headerBreadcrumbsDepth', min: 0, max: 8, step: 1 } },
           // Pinboard — dynamic section reorder UI; use render:
           {
-            name: 'Pinboard',
+            name: 'Favorites & pinboard',
             searchable: false,
             render: (setting, group) => {
               setting.setHeading();
               this._pinboardEl = group.listEl;
               group.listEl.createEl('p', {
-                text: 'The ★ favorites sidebar tab is a fully customizable pinboard. Enable sections, reorder them with ↑ ↓, and configure each one below.',
+                text: 'The ★ favorites sidebar tab is a customizable pinboard. Enable sections, reorder them with ↑ ↓, and configure each one below.',
                 cls: 'setting-item-description',
               });
               this.renderPinboardSections(group.listEl);
             },
           },
-          { type: 'group', heading: 'Favorites section', items: [
+          { type: 'group', heading: 'Favorite notes', items: [
             { name: 'Pinned notes',
               desc: 'File paths to always include in the favorites section, one per line. Notes with bread-trail.favorite: true in their frontmatter are also included automatically.',
               control: { type: 'textarea', key: 'navigatorFavorites', placeholder: 'Journal/Index.md\nProjects/MOC.md' } },
-            { name: 'Favorites parent note',
-              desc: 'Path to a note whose bc children are treated as favorites. Leave blank to disable.',
+            { name: 'Favorites source note',
+              desc: 'Path to a note whose Breadcrumbs children are also shown as favorites. Which fields count as children comes from Breadcrumbs direction groups. Leave blank to disable.',
               control: { type: 'text', key: 'navigatorFavoritesParentNote', placeholder: 'e.g. Meta/Frequent.md' } },
             { name: 'Favorites metadata properties',
               desc: 'Frontmatter keys shown in favorites section cards, one per line.',
               visible: () => this.advancedMode,
               control: { type: 'textarea', key: 'navigatorFavoritesMetaProperties', placeholder: 'Date\nstatus' } },
           ]},
-          { type: 'group', heading: 'Exclusions', items: [
+          { type: 'group', heading: 'Hidden notes', items: [
             { name: 'Exclude folders',
               desc: 'Comma-separated folder paths. Notes inside are hidden from the navigator.',
               control: { type: 'text', key: 'navigatorExcludeFolders', placeholder: 'Templates, archive/old' } },
@@ -396,6 +439,103 @@ class BreadTrailSettingTab extends PluginSettingTab {
   }
 
   // ── Imperative helpers used by render: callbacks ──────────────────────────
+
+  /** Make the external Breadcrumbs dependency visible at the point people
+   * configure BreadTrail. This is deliberately live rather than persisted: a
+   * plugin can finish loading after BreadTrail, or its graph can be rebuilt. */
+  private renderBreadcrumbsStatus(setting: Setting) {
+    const bc = this.plugin.getBreadcrumbsForSettings();
+    const activeFile = this.app.workspace.getActiveFile();
+
+    if (!bc) {
+      setting
+        .setName('Breadcrumbs is not connected')
+        .setDesc('Enable the breadcrumbs community plugin, then reopen this page. Breadtrail reads its relationship graph and does not maintain a separate one.')
+        .addButton((button) => button
+          .setButtonText('Open breadcrumbs settings')
+          .onClick(() => this.openBreadcrumbsSettings()));
+      return;
+    }
+
+    const dirs = getEdgeDirections(bc);
+    const groups: [string, Set<string>][] = [
+      ['Parents', dirs.ups],
+      ['Children', dirs.downs],
+      ['Next', dirs.nexts],
+      ['Previous', dirs.prevs],
+    ];
+    const groupSummary = groups.map(([name, fields]) => `${name}: ${[...fields].join(', ')}`).join(' · ');
+
+    const activeRelationship = activeFile
+      ? this.describeActiveRelationships(bc, activeFile.path, activeFile.basename, dirs)
+      : 'Open a note to preview its live breadcrumbs relationships.';
+
+    setting
+      .setName('Breadcrumbs is connected')
+      .setDesc(`Detected relationship fields: ${groupSummary}. ${activeRelationship}`)
+      .addButton((button) => button
+        .setButtonText('Rebuild graph')
+        .onClick(() => this.rebuildBreadcrumbsGraph()))
+      .addButton((button) => button
+        .setButtonText('Open breadcrumbs settings')
+        .onClick(() => this.openBreadcrumbsSettings()));
+
+  }
+
+  private describeActiveRelationships(
+    bc: BreadcrumbsPlugin,
+    path: string,
+    basename: string,
+    dirs: ReturnType<typeof getEdgeDirections>,
+  ): string {
+    const parents = this.resolveRelationshipPaths(bc, path, dirs);
+    return parents.length > 0
+      ? `Active note: ${basename} → parent${parents.length === 1 ? '' : 's'}: ${parents.join(', ')}`
+      : `Active note: ${basename} has no parent relationship in the current Breadcrumbs graph.`;
+  }
+
+  private resolveRelationshipPaths(
+    bc: BreadcrumbsPlugin,
+    path: string,
+    dirs: ReturnType<typeof getEdgeDirections>,
+  ): string[] {
+    return getParentPaths(bc.graph, path, dirs)
+      .map((parentPath) => this.app.vault.getAbstractFileByPath(parentPath))
+      .filter((file): file is TFile => file instanceof TFile)
+      .map((file) => file.basename);
+  }
+
+  private openBreadcrumbsSettings() {
+    (this.app as SettingsApp).setting.openTabById('breadcrumbs');
+  }
+
+  private rebuildBreadcrumbsGraph() {
+    void (this.app as SettingsApp).commands.executeCommandById('breadcrumbs:rebuild-graph');
+  }
+
+  private renderPathStatus(setting: Setting) {
+    const s = this.plugin.settings;
+    const checks = [
+      this.describeConfiguredPath('Browser starting point', s.homeNote),
+      this.describeConfiguredPath('Dashboard note', s.homepageNote),
+      this.describeConfiguredPath('Dashboard destination', s.homepageTarget),
+    ];
+    setting
+      .setName('Configured paths')
+      .setDesc(checks.join(' · '))
+      .addButton((button) => button
+        .setButtonText('Recheck')
+        .onClick(() => (this.app as SettingsApp).setting.refreshCurrentPage()));
+  }
+
+  private describeConfiguredPath(label: string, path: string): string {
+    if (!path) return `${label}: not set`;
+    const direct = this.app.vault.getAbstractFileByPath(path)
+      ?? this.app.vault.getAbstractFileByPath(`${path}.md`);
+    const basenameMatches = this.app.vault.getMarkdownFiles().filter((file) => file.basename === path);
+    const resolved = direct ?? (basenameMatches.length === 1 ? basenameMatches[0] : null);
+    return resolved ? `${label}: found` : `${label}: not found`;
+  }
 
   private renderFloatingNavigatorSection(el: HTMLElement) {
     if (Platform.isMobile) {

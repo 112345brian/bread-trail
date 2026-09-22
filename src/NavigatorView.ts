@@ -11,7 +11,7 @@ import type { NavBuildCtx } from './navigator/NavDataBuilder';
 import { NavigatorApp } from './navigator/App';
 import { getHomepageTargetForFile } from './homepageUtils';
 import type { HomepageTarget } from './homepageUtils';
-import { getParentPaths } from './bcGraph';
+import { getParentPaths, getEdgeDirections } from './bcGraph';
 import { computeBcBrowserInit } from './navigator/browserInit';
 
 export const NAVIGATOR_VIEW_TYPE = 'bread-trail-navigator';
@@ -208,7 +208,7 @@ export class NavigatorView extends ItemView {
     if (!bc) { this.scheduleRefresh(); return; }
 
     // Collect all UP parents of the active file
-    const parents = getParentPaths(bc.graph, file.path)
+    const parents = getParentPaths(bc.graph, file.path, getEdgeDirections(bc))
       .map((p) => this.app.vault.getAbstractFileByPath(p))
       .filter((f): f is TFile => f instanceof TFile);
 
@@ -667,7 +667,7 @@ export class NavigatorView extends ItemView {
       },
       getParentPath: (p) => {
         if (!bc) return null;
-        const parents = getParentPaths(bc.graph, p);
+        const parents = getParentPaths(bc.graph, p, getEdgeDirections(bc));
         return parents.length > 0 ? (parents[0]!) : null;
       },
       // Pass null when bc unavailable — falls through to empty-stack fallback

@@ -18,7 +18,7 @@ import type {
 } from './types';
 import { isExcluded, formatDateValue, extractContentSnippet, extractFirstImageLink, startsWithBaseTransclusion } from '../utils';
 import { shouldIncludeVaultRoot } from '../homepageRoots';
-import { isDirectChild, getParentPaths, getChildPaths, hasParent as bcHasParent, hasChildren as bcHasChildren, getChainPathIds } from '../bcGraph';
+import { isDirectChild, getParentPaths, getChildPaths, hasParent as bcHasParent, hasChildren as bcHasChildren, getChainPathIds, getEdgeDirections, findPrevPaths, findNextPaths, type EdgeDirections } from '../bcGraph';
 
 export interface NavBuildCtx {
   app: App;
@@ -58,6 +58,7 @@ export class NavDataBuilder {
       return { sections: [], emptyMessage: 'Open a note to see its context.' };
     }
 
+    const dirs = getEdgeDirections(bc);
     const { parents, chains, children } = this.buildNeighborhood(activeFile, bc);
     if (parents.length === 0 && chains.length === 0 && children.length === 0) {
       return { sections: [], emptyMessage: 'No breadcrumb relationships found.' };
@@ -151,7 +152,7 @@ export class NavDataBuilder {
         const sibSort = this.getSort('siblings', ['alpha', 'alpha-desc', 'mtime', 'ctime', 'sequence']);
         const sibCards = await Promise.all(
           this.sortNotes(siblings, sibSort).map((n) =>
-            this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) }),
+            this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc, dirs) }),
           ),
         );
         sections.push({
@@ -170,12 +171,13 @@ export class NavDataBuilder {
     activeFile: TFile | null,
     cycle: SortMode[],
   ): Promise<Pick<NavData, 'sections' | 'flatCards' | 'groups' | 'emptyMessage'>> {
+    const dirs = getEdgeDirections(bc);
     const followTargets = this.ctx.getFollowTargets();
     if (followTargets.length > 0) {
       const seen = new Set<string>(followTargets.map((t) => t.path));
       const children: NavNote[] = [];
       for (const target of followTargets) {
-        for (const p of getChildPaths(bc.graph, target.path)) {
+        for (const p of getChildPaths(bc.graph, target.path, dirs)) {
           if (seen.has(p)) continue;
           const f = this.ctx.app.vault.getAbstractFileByPath(p);
           if (!(f instanceof TFile) || isExcluded(f, this.ctx.app, this.ctx.getSettings())) continue;
@@ -187,7 +189,7 @@ export class NavDataBuilder {
       const sort = this.getSort('browser-child', cycle);
       const flatCards = await Promise.all(
         this.sortNotes(children, sort).map((n) =>
-          this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) }),
+          this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc, dirs) }),
         ),
       );
       return { sections: [], flatCards };
@@ -213,7 +215,7 @@ export class NavDataBuilder {
         this.groupNotes(sorted, groupBy).map(async ([groupLabel, groupNotes]) => ({
           label: groupLabel,
           cards: await Promise.all(
-            groupNotes.map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+            groupNotes.map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc, dirs) })),
           ),
         })),
       );
@@ -221,7 +223,7 @@ export class NavDataBuilder {
     }
 
     const flatCards = await Promise.all(
-      sorted.map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+      sorted.map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc, dirs) })),
     );
     return { sections: [], flatCards };
   }
@@ -233,6 +235,7 @@ export class NavDataBuilder {
     rootFolder: string | null = null,
   ): Promise<Pick<NavData, 'sections' | 'flatCards' | 'emptyMessage'>> {
     const settings = this.ctx.getSettings();
+    const dirs = getEdgeDirections(bc);
 
     if (rootFolder) {
       const sort = this.getSort('browser-child', cycle);
@@ -242,7 +245,7 @@ export class NavDataBuilder {
       }
       const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' }));
       const flatCards = await Promise.all(
-        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc, dirs) })),
       );
       return { sections: [], flatCards };
     }
@@ -258,7 +261,7 @@ export class NavDataBuilder {
       }
       const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' }));
       const flatCards = await Promise.all(
-        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc, dirs) })),
       );
       return { sections: [], flatCards };
     }
@@ -270,7 +273,7 @@ export class NavDataBuilder {
     if (roots.length > 0) {
       const notes: NavNote[] = roots.map((f) => ({ file: f, relation: 'child' }));
       const cards = await Promise.all(
-        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+        this.sortNotes(notes, sort).map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc, dirs) })),
       );
       sections.push({
         id: 'home-notes', label: 'Notes', icon: 'git-branch', cards,
@@ -604,19 +607,20 @@ export class NavDataBuilder {
 
   // ── Graph / file helpers ───────────────────────────────────────────────────
 
-  hasChildren(file: TFile, bc: BreadcrumbsPlugin): boolean {
-    return bcHasChildren(bc.graph, file.path);
+  hasChildren(file: TFile, bc: BreadcrumbsPlugin, dirs?: EdgeDirections): boolean {
+    return bcHasChildren(bc.graph, file.path, dirs ?? getEdgeDirections(bc));
   }
 
   getVaultRoots(bc: BreadcrumbsPlugin, rootFolder = ''): TFile[] {
     const folder = rootFolder.trim().replace(/^\/+|\/+$/g, '');
     const roots: TFile[] = [];
     const settings = this.ctx.getSettings();
+    const dirs = getEdgeDirections(bc);
     for (const file of this.ctx.app.vault.getMarkdownFiles()) {
       if (shouldIncludeVaultRoot({
         path: file.path,
-        hasChildren: bcHasChildren(bc.graph, file.path),
-        hasParent: bcHasParent(bc.graph, file.path),
+        hasChildren: bcHasChildren(bc.graph, file.path, dirs),
+        hasParent: bcHasParent(bc.graph, file.path, dirs),
         excluded: isExcluded(file, this.ctx.app, settings),
       }, folder)) roots.push(file);
     }
@@ -624,14 +628,14 @@ export class NavDataBuilder {
   }
 
   getAllParentFiles(file: TFile, bc: BreadcrumbsPlugin, limit = 4): TFile[] {
-    return getParentPaths(bc.graph, file.path)
+    return getParentPaths(bc.graph, file.path, getEdgeDirections(bc))
       .slice(0, limit)
       .map((p) => this.ctx.app.vault.getAbstractFileByPath(p))
       .filter((f): f is TFile => f instanceof TFile);
   }
 
   getFirstParentFile(file: TFile, bc: BreadcrumbsPlugin): TFile | null {
-    for (const p of getParentPaths(bc.graph, file.path)) {
+    for (const p of getParentPaths(bc.graph, file.path, getEdgeDirections(bc))) {
       const f = this.ctx.app.vault.getAbstractFileByPath(p);
       if (f instanceof TFile) return f;
     }
@@ -640,15 +644,16 @@ export class NavDataBuilder {
 
   getSiblingPaths(file: TFile, bc: BreadcrumbsPlugin): Set<string> {
     const siblings = new Set<string>();
-    for (const parentPath of getParentPaths(bc.graph, file.path)) {
-      for (const cp of getChildPaths(bc.graph, parentPath)) siblings.add(cp);
+    const dirs = getEdgeDirections(bc);
+    for (const parentPath of getParentPaths(bc.graph, file.path, dirs)) {
+      for (const cp of getChildPaths(bc.graph, parentPath, dirs)) siblings.add(cp);
     }
     return siblings;
   }
 
   getFolderChildren(folder: TFile, bc: BreadcrumbsPlugin): NavNote[] {
     const settings = this.ctx.getSettings();
-    const children: NavNote[] = getChildPaths(bc.graph, folder.path)
+    const children: NavNote[] = getChildPaths(bc.graph, folder.path, getEdgeDirections(bc))
       .map((p) => this.ctx.app.vault.getAbstractFileByPath(p))
       .filter((f): f is TFile => f instanceof TFile && !isExcluded(f, this.ctx.app, settings))
       .map((f): NavNote => ({ file: f, relation: 'child' }));
@@ -686,7 +691,7 @@ export class NavDataBuilder {
     const bt = this.getBreadTrailFm(file);
     if (bt?.['favorite'] === true) return true;
     const parentPath = settings.navigatorFavoritesParentNote.trim();
-    if (parentPath && bc) return isDirectChild(bc.graph, file.path, parentPath);
+    if (parentPath && bc) return isDirectChild(bc.graph, file.path, parentPath, getEdgeDirections(bc));
     return false;
   }
 
@@ -778,8 +783,8 @@ export class NavDataBuilder {
 
   // ── Chain traversal ────────────────────────────────────────────────────────
 
-  getChainPaths(file: TFile, bc: BreadcrumbsPlugin): string[] {
-    return [...getChainPathIds(bc.graph, file.path)].sort();
+  getChainPaths(file: TFile, bc: BreadcrumbsPlugin, dirs: EdgeDirections): string[] {
+    return [...getChainPathIds(bc.graph, file.path, dirs)].sort();
   }
 
   buildNeighborhood(file: TFile, bc: BreadcrumbsPlugin): {
@@ -787,12 +792,13 @@ export class NavDataBuilder {
     chains: Array<{ path: string; notes: NavNote[] }>;
     children: NavNote[];
   } {
-    const chainPaths = this.getChainPaths(file, bc);
+    const dirs = getEdgeDirections(bc);
+    const chainPaths = this.getChainPaths(file, bc, dirs);
     const chains: Array<{ path: string; notes: NavNote[] }> = [];
     const chainFilePaths = new Set<string>();
 
     for (const chainPath of chainPaths) {
-      const notes = this.buildChainForPath(file, bc, chainPath);
+      const notes = this.buildChainForPath(file, bc, dirs);
       if (notes.length > 0) {
         chains.push({ path: chainPath, notes });
         notes.forEach((n) => chainFilePaths.add(n.file.path));
@@ -808,20 +814,20 @@ export class NavDataBuilder {
       seen.add(p);
       return { file: f, relation };
     };
-    const parents: NavNote[] = getParentPaths(bc.graph, file.path)
+    const parents: NavNote[] = getParentPaths(bc.graph, file.path, dirs)
       .map((p) => toNote(p, 'parent')).filter((n): n is NavNote => n !== null);
-    const children: NavNote[] = getChildPaths(bc.graph, file.path)
+    const children: NavNote[] = getChildPaths(bc.graph, file.path, dirs)
       .map((p) => toNote(p, 'child')).filter((n): n is NavNote => n !== null);
 
     return { parents, chains, children };
   }
 
-  buildChainForPath(file: TFile, bc: BreadcrumbsPlugin, chainPath: string): NavNote[] {
+  buildChainForPath(file: TFile, bc: BreadcrumbsPlugin, dirs: EdgeDirections): NavNote[] {
     const before: TFile[] = [];
     const seenBack = new Set<string>([file.path]);
     let cur = file;
     while (true) {
-      const prev = this.findPrevForPath(cur, bc, chainPath, seenBack);
+      const prev = this.findPrevForPath(cur, bc, seenBack, dirs);
       if (!prev) break;
       seenBack.add(prev.path);
       before.push(prev);
@@ -833,7 +839,7 @@ export class NavDataBuilder {
     const seenFwd = new Set<string>([...seenBack]);
     cur = file;
     while (true) {
-      const next = this.findNextForPath(cur, bc, chainPath, seenFwd);
+      const next = this.findNextForPath(cur, bc, seenFwd, dirs);
       if (!next) break;
       seenFwd.add(next.path);
       after.push(next);
@@ -851,58 +857,32 @@ export class NavDataBuilder {
     return chain;
   }
 
-  findPrevForPath(file: TFile, bc: BreadcrumbsPlugin, chainPath: string, seen: Set<string>): TFile | null {
-    const nextType = chainPath ? `next.${chainPath}` : 'next';
-    const prevType = chainPath ? `prev.${chainPath}` : 'prev';
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== nextType) continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path || seen.has(path)) continue;
-      const f = this.ctx.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) return f;
-    }
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== prevType) continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path || seen.has(path)) continue;
+  findPrevForPath(file: TFile, bc: BreadcrumbsPlugin, seen: Set<string>, dirs: EdgeDirections): TFile | null {
+    for (const path of findPrevPaths(bc.graph, file.path, seen, dirs)) {
       const f = this.ctx.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) return f;
     }
     return null;
   }
 
-  findNextForPath(file: TFile, bc: BreadcrumbsPlugin, chainPath: string, seen: Set<string>): TFile | null {
-    const nextType = chainPath ? `next.${chainPath}` : 'next';
-    const prevType = chainPath ? `prev.${chainPath}` : 'prev';
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== nextType) continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path || seen.has(path)) continue;
-      const f = this.ctx.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) return f;
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== prevType) continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path || seen.has(path)) continue;
+  findNextForPath(file: TFile, bc: BreadcrumbsPlugin, seen: Set<string>, dirs: EdgeDirections): TFile | null {
+    for (const path of findNextPaths(bc.graph, file.path, seen, dirs)) {
       const f = this.ctx.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) return f;
     }
     return null;
   }
 
-  findNextAny(file: TFile, bc: BreadcrumbsPlugin, withinPaths: Set<string>, seen: Set<string>): TFile | null {
+  findNextAny(file: TFile, bc: BreadcrumbsPlugin, withinPaths: Set<string>, seen: Set<string>, dirs: EdgeDirections): TFile | null {
     for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      const t = e.edge_type?.toLowerCase() ?? '';
-      if (t !== 'next' && !t.startsWith('next.')) continue;
+      if (!dirs.nexts.has(e.edge_type?.toLowerCase() ?? '')) continue;
       const path = e.target_path?.(bc.graph) ?? e.target;
       if (!path || seen.has(path) || !withinPaths.has(path)) continue;
       const f = this.ctx.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) return f;
     }
     for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      const t = e.edge_type?.toLowerCase() ?? '';
-      if (t !== 'prev' && !t.startsWith('prev.')) continue;
+      if (!dirs.prevs.has(e.edge_type?.toLowerCase() ?? '')) continue;
       const path = e.source_path?.(bc.graph) ?? e.source;
       if (!path || seen.has(path) || !withinPaths.has(path)) continue;
       const f = this.ctx.app.vault.getAbstractFileByPath(path);
@@ -914,17 +894,16 @@ export class NavDataBuilder {
   assignSeqPositions(children: NavNote[], bc: BreadcrumbsPlugin): void {
     if (children.length === 0) return;
     const paths = new Set(children.map((c) => c.file.path));
+    const dirs = getEdgeDirections(bc);
 
     const hasPrevInList = (f: TFile): boolean => {
       for (const e of bc.graph.get_incoming_edges(f.path).to_array()) {
-        const t = e.edge_type?.toLowerCase() ?? '';
-        if (t !== 'next' && !t.startsWith('next.')) continue;
+        if (!dirs.nexts.has(e.edge_type?.toLowerCase() ?? '')) continue;
         const p = e.source_path?.(bc.graph) ?? e.source;
         if (p && paths.has(p)) return true;
       }
       for (const e of bc.graph.get_outgoing_edges(f.path).to_array()) {
-        const t = e.edge_type?.toLowerCase() ?? '';
-        if (t !== 'prev' && !t.startsWith('prev.')) continue;
+        if (!dirs.prevs.has(e.edge_type?.toLowerCase() ?? '')) continue;
         const p = e.target_path?.(bc.graph) ?? e.target;
         if (p && paths.has(p)) return true;
       }
@@ -940,7 +919,7 @@ export class NavDataBuilder {
     while (!seen.has(cur.path) && paths.has(cur.path)) {
       seen.add(cur.path);
       ordered.push(cur);
-      const nxt = this.findNextAny(cur, bc, paths, seen);
+      const nxt = this.findNextAny(cur, bc, paths, seen, dirs);
       if (!nxt) break;
       cur = nxt;
     }
@@ -1038,19 +1017,21 @@ export class NavDataBuilder {
     const sort = this.getSort('pb-current', cycle);
     const sorted = this.sortNotes(children, sort);
     const limited = limit > 0 ? sorted.slice(0, limit) : sorted;
+    const dirs = getEdgeDirections(bc);
 
     return Promise.all(
-      limited.map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc) })),
+      limited.map((n) => this.buildCardData(n, activeFile, { hasDrillIn: this.hasChildren(n.file, bc, dirs) })),
     );
   }
 
   private async buildPinboardRootsCards(activeFile: TFile | null, bc: BreadcrumbsPlugin): Promise<CardData[]> {
     const roots = this.getVaultRoots(bc);
+    const dirs = getEdgeDirections(bc);
     return Promise.all(
       roots.map((f) => this.buildCardData(
         { file: f, relation: 'child' },
         activeFile,
-        { hasDrillIn: this.hasChildren(f, bc) },
+        { hasDrillIn: this.hasChildren(f, bc, dirs) },
       )),
     );
   }
@@ -1062,11 +1043,12 @@ export class NavDataBuilder {
       .filter((f) => !isExcluded(f, this.ctx.app, settings) && this.fileHasTag(f, tag));
     files.sort((a, b) => a.basename.localeCompare(b.basename));
     if (limit > 0) files = files.slice(0, limit);
+    const dirs = bc ? getEdgeDirections(bc) : undefined;
     return Promise.all(
       files.map((f) => this.buildCardData(
         { file: f, relation: 'child' },
         activeFile,
-        { hasDrillIn: bc ? this.hasChildren(f, bc) : false },
+        { hasDrillIn: bc ? this.hasChildren(f, bc, dirs) : false },
       )),
     );
   }
@@ -1078,11 +1060,12 @@ export class NavDataBuilder {
       .filter((f) => !isExcluded(f, this.ctx.app, settings) && this.fileMatchesPattern(f, pattern));
     files.sort((a, b) => a.basename.localeCompare(b.basename));
     if (limit > 0) files = files.slice(0, limit);
+    const dirs = bc ? getEdgeDirections(bc) : undefined;
     return Promise.all(
       files.map((f) => this.buildCardData(
         { file: f, relation: 'child' },
         activeFile,
-        { hasDrillIn: bc ? this.hasChildren(f, bc) : false },
+        { hasDrillIn: bc ? this.hasChildren(f, bc, dirs) : false },
       )),
     );
   }

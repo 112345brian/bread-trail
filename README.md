@@ -4,6 +4,14 @@ An auxiliary plugin for [Breadcrumbs](https://github.com/SkepticMystic/breadcrum
 
 > **Requires** the [Breadcrumbs](https://github.com/SkepticMystic/breadcrumbs) plugin. Bread Trail detects it on startup and guides you through installation if it's missing.
 
+## Releasing
+
+Every user-visible change needs a [Towncrier fragment](./changelog.d/README.md).
+Preview pending release notes with `npm run changelog:preview` (set
+`npm_package_version` to the intended version), then use `npm version patch`,
+`npm version minor`, or `npm version major`. The version command compiles the
+fragments, updates plugin metadata, commits, and creates the release tag.
+
 ---
 
 ## Navigator Sidebar

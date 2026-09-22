@@ -20,7 +20,7 @@ import { App, MarkdownView, Menu, TFile, setIcon } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 import { formatDateValue, isExcluded } from './utils';
-import { getParentPaths, getChildPaths, getChainPathIds } from './bcGraph';
+import { getParentPaths, getChildPaths, getChainPathIds, getEdgeDirections, findPrevPaths, findNextPaths, type EdgeDirections } from './bcGraph';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -141,12 +141,13 @@ export class FloatingNavPanel {
   // ── Neighborhood (mirrors NavigatorView.buildNeighborhood) ─────────────────
 
   private buildNeighborhood(file: TFile, bc: BreadcrumbsPlugin): Neighborhood {
-    const chainPaths = this.getChainPaths(file, bc);
+    const dirs = getEdgeDirections(bc);
+    const chainPaths = this.getChainPaths(file, bc, dirs);
     const chains: Array<{ path: string; notes: ChainNote[] }> = [];
     const chainFilePaths = new Set<string>();
 
     for (const chainPath of chainPaths) {
-      const notes = this.buildChainForPath(file, bc, chainPath);
+      const notes = this.buildChainForPath(file, bc, dirs);
       if (notes.length > 0) {
         chains.push({ path: chainPath, notes });
         notes.forEach((n) => chainFilePaths.add(n.file.path));
@@ -162,35 +163,23 @@ export class FloatingNavPanel {
       seen.add(p);
       return f;
     };
-    const parents = getParentPaths(bc.graph, file.path).map(toFile).filter((f): f is TFile => f !== null);
-    const children = getChildPaths(bc.graph, file.path).map(toFile).filter((f): f is TFile => f !== null);
+    const parents = getParentPaths(bc.graph, file.path, dirs).map(toFile).filter((f): f is TFile => f !== null);
+    const children = getChildPaths(bc.graph, file.path, dirs).map(toFile).filter((f): f is TFile => f !== null);
 
     return { parents, chains, children };
   }
 
-  private getChainPaths(file: TFile, bc: BreadcrumbsPlugin): string[] {
-    return [...getChainPathIds(bc.graph, file.path)].sort();
+  private getChainPaths(file: TFile, bc: BreadcrumbsPlugin, dirs: EdgeDirections): string[] {
+    return [...getChainPathIds(bc.graph, file.path, dirs)].sort();
   }
 
   private findPrevForPath(
     file: TFile,
     bc: BreadcrumbsPlugin,
-    chainPath: string,
     seen: Set<string>,
+    dirs: EdgeDirections,
   ): TFile | null {
-    const nextType = chainPath ? `next.${chainPath}` : 'next';
-    const prevType = chainPath ? `prev.${chainPath}` : 'prev';
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== nextType) continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path || seen.has(path)) continue;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) return f;
-    }
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== prevType) continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path || seen.has(path)) continue;
+    for (const path of findPrevPaths(bc.graph, file.path, seen, dirs)) {
       const f = this.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) return f;
     }
@@ -200,22 +189,10 @@ export class FloatingNavPanel {
   private findNextForPath(
     file: TFile,
     bc: BreadcrumbsPlugin,
-    chainPath: string,
     seen: Set<string>,
+    dirs: EdgeDirections,
   ): TFile | null {
-    const nextType = chainPath ? `next.${chainPath}` : 'next';
-    const prevType = chainPath ? `prev.${chainPath}` : 'prev';
-    for (const e of bc.graph.get_outgoing_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== nextType) continue;
-      const path = e.target_path?.(bc.graph) ?? e.target;
-      if (!path || seen.has(path)) continue;
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) return f;
-    }
-    for (const e of bc.graph.get_incoming_edges(file.path).to_array()) {
-      if (e.edge_type?.toLowerCase() !== prevType) continue;
-      const path = e.source_path?.(bc.graph) ?? e.source;
-      if (!path || seen.has(path)) continue;
+    for (const path of findNextPaths(bc.graph, file.path, seen, dirs)) {
       const f = this.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) return f;
     }
@@ -225,13 +202,13 @@ export class FloatingNavPanel {
   private buildChainForPath(
     file: TFile,
     bc: BreadcrumbsPlugin,
-    chainPath: string,
+    dirs: EdgeDirections,
   ): ChainNote[] {
     const before: TFile[] = [];
     const seenBack = new Set<string>([file.path]);
     let cur = file;
     while (true) {
-      const prev = this.findPrevForPath(cur, bc, chainPath, seenBack);
+      const prev = this.findPrevForPath(cur, bc, seenBack, dirs);
       if (!prev) break;
       seenBack.add(prev.path);
       before.push(prev);
@@ -243,7 +220,7 @@ export class FloatingNavPanel {
     const seenFwd = new Set<string>([...seenBack]);
     cur = file;
     while (true) {
-      const next = this.findNextForPath(cur, bc, chainPath, seenFwd);
+      const next = this.findNextForPath(cur, bc, seenFwd, dirs);
       if (!next) break;
       seenFwd.add(next.path);
       after.push(next);

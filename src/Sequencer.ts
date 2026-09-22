@@ -1,7 +1,7 @@
 import { App, TFile } from 'obsidian';
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
-import { getChildPaths } from './bcGraph';
+import { getChildPaths, getEdgeDirections } from './bcGraph';
 
 // ── Config types (parsed from a parent note's frontmatter) ───────────────────
 
@@ -303,7 +303,7 @@ export class Sequencer {
 
   /** Get all direct children of a file via the BC graph (bidirectional). */
   private getChildren(parent: TFile): TFile[] {
-    return getChildPaths(this.bc.graph, parent.path, true)
+    return getChildPaths(this.bc.graph, parent.path, getEdgeDirections(this.bc), true)
       .map((p) => this.app.vault.getAbstractFileByPath(p))
       .filter((f): f is TFile => f instanceof TFile);
   }

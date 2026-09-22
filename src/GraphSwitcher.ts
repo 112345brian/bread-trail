@@ -2,6 +2,7 @@ import { App, Component, MarkdownRenderer, Modal, TFile, setIcon } from 'obsidia
 import type { BreadcrumbsPlugin } from './main';
 import type { BreadTrailSettings } from './settings';
 import { extractExcerpt } from './utils';
+import { getEdgeDirections, type EdgeDirections } from './bcGraph';
 
 interface GraphNode {
   file: TFile;
@@ -63,6 +64,7 @@ export class GraphSwitcher extends Modal {
   private allPaths = new Set<string>();
   private pathColorMap = new Map<string, string>();
   private excerptCache = new Map<string, string>();
+  private dirs: EdgeDirections;
 
   constructor(
     app: App,
@@ -74,6 +76,7 @@ export class GraphSwitcher extends Modal {
     super(app);
     this.selectedPath = rootFile.path;
     this.initialFile = rootFile;
+    this.dirs = getEdgeDirections(bc);
     this.registerDirectionalHotkeys();
   }
 
@@ -896,11 +899,11 @@ export class GraphSwitcher extends Modal {
   }
 
   private getRelation(edgeType: string | undefined, direction: Direction): Relation {
-    const type = edgeType?.toLowerCase();
-    if (type === 'up') return direction === 'outgoing' ? 'parent' : 'child';
-    if (type === 'down') return direction === 'outgoing' ? 'child' : 'parent';
-    if (type === 'next') return direction === 'outgoing' ? 'next' : 'previous';
-    if (type === 'prev') return direction === 'outgoing' ? 'previous' : 'next';
+    const type = edgeType?.toLowerCase() ?? '';
+    if (this.dirs.ups.has(type)) return direction === 'outgoing' ? 'parent' : 'child';
+    if (this.dirs.downs.has(type)) return direction === 'outgoing' ? 'child' : 'parent';
+    if (this.dirs.nexts.has(type)) return direction === 'outgoing' ? 'next' : 'previous';
+    if (this.dirs.prevs.has(type)) return direction === 'outgoing' ? 'previous' : 'next';
     return 'related';
   }
 
