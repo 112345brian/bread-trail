@@ -1,3 +1,11 @@
+## [1.2.31] — 2026-09-22
+
+### Added
+
+- BreadTrail settings now show live Breadcrumbs connection and relationship
+  details, and plugin reloads no longer leave a stale blank navigator sidebar.
+
+
 # Changelog
 
 ## [1.2.30] — 2026-06-14
